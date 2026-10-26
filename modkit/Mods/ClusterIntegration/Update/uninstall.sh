@@ -68,6 +68,16 @@ for proc in cluster gal gal.real dio_manager dio_manager.real; do
         print "slay:              $proc"
     fi
 done
+
+# Persisted copy of Mods/ClusterIntegration/Persist under /mnt/ota (placed there by
+# the ModKit, or by install.sh's explicit copy on cards written by macOS). Without
+# this the boot-time script would keep looking for a daemon that no longer exists.
+PERSIST_DIR="/mnt/ota/modkit/Mods/${MOD_PATH%/*}"
+PERSIST_DIR="/mnt/ota/modkit/Mods/${PERSIST_DIR##*/}"
+if [[ -d "$PERSIST_DIR" ]]; then
+    mount -uw /mnt/ota 2>/dev/null
+    rm -rf "$PERSIST_DIR" 2>/dev/null && print "remove persist:    $PERSIST_DIR" || print "WARN: could not remove $PERSIST_DIR"
+fi
 print ""
 
 # Reverse of swap_binary_for_wrapper. If NAME.real exists, remove the

@@ -1,12 +1,16 @@
 package de.audi.app.terminalmode.smartphone.androidauto2.nav;
 
 import de.audi.app.terminalmode.IContext;
+import de.audi.app.terminalmode.events.DefaultEventListener;
+import de.audi.atip.mmicombi.IViewSizeManager;
+import de.eso.hmiservice.display.DisplayManagerMIB2High;
 import org.dsi.ifc.map.DSIMapViewerControl;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.ServiceReference;
 import org.osgi.util.tracker.ServiceTracker;
 import org.osgi.util.tracker.ServiceTrackerCustomizer;
 
+import java.io.FileOutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
@@ -42,6 +46,21 @@ import java.lang.reflect.Method;
  * OSGi services whose names look map/cluster related, so a failed lookup on
  * a new car leaves evidence (KOMBI_MAP: service: lines in cluster.log).
  *
+ * The same hide/show runs for the CarPlay screen mirror when the
+ * CarPlayClusterIntegration is passed to start(): its clusterState field
+ * uses the same RENDERING value (2); it is read by reflection so this class
+ * does not need the CarPlay classes on the class path.
+ *
+ * With the mod's DisplayManagerMIB2High in the jar (A6 C8 P2711, 2026-10-26)
+ * the video no longer covers the map: the cluster daemon posts it on
+ * displayable 62 and this guard only asks the display manager to show the
+ * video context instead of the map context, and back when the video stops.
+ * The native map is never suspended or hidden, so it is there again at once.
+ * Taking over displayable 33 left the cockpit black after the video on the
+ * A6, whatever was asked of the map viewer and IMapClusterService. The
+ * hide/show path above remains as the fallback when that display manager
+ * is not loaded.
+ *
  * Based on KombiMapGuard by Bhushan Ahire (PR #11, Q7 P2711) with the
  * ServiceTracker, delayed show and service inventory from KombiMapHandback
  * (e-tron P2873). Java 1.4 source level (the HMI JVM loads class-file
@@ -49,7 +68,7 @@ import java.lang.reflect.Method;
  */
 public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
 
-    public static final String BUILD = "kombi-guard 2026-10-18a";
+    public static final String BUILD = "kombi-guard 2026-10-26c (AA + CarPlay, displayable 62, view size)";
 
     private static final String MAP_CLUSTER_CLASS = "de.audi.tghu.navi.app.cluster.IMapClusterService";
     private static final int CL_RENDERING = 2;
@@ -64,6 +83,13 @@ public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
     private final IContext context;
     private final AndroidAutoClusterIntegration integration;
     private Field stateField;
+    /* CarPlay mirror (CarPlayClusterIntegration, a different package): same
+     * clusterState field, same CL_RENDERING value. Held as Object and read by
+     * reflection so this class does not depend on the CarPlay classes being
+     * present in the jar. null when CarPlay is not integrated. */
+    private final Object cpIntegration;
+    private Field cpStateField;
+    private boolean cpRenderingLogged = false;
     private BundleContext bundleContext;
     private ServiceTracker tracker;
     private DSIMapViewerControl kombiViewer;
@@ -75,16 +101,31 @@ public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
     private long showAt = 0L;
     private boolean codingLogged = false;
     private boolean servicesDumped = false;
+    private boolean altVideo = false;
+    private static final String VIEW_SIZE_CLASS = "de.audi.atip.mmicombi.IViewSizeManager";
+    private IViewSizeManager viewSizeManager;
+    private long viewSizeLookup = 0L;
+    private int viewSizeTries = 0;
+    private int lastViewSize = -99;
 
-    private KombiMapGuard(IContext context, AndroidAutoClusterIntegration integration) {
+    private KombiMapGuard(IContext context, AndroidAutoClusterIntegration integration, Object cpIntegration) {
         this.context = context;
         this.integration = integration;
+        this.cpIntegration = cpIntegration;
     }
 
     /** Starts the guard thread. Never throws. */
     public static void start(IContext context, AndroidAutoClusterIntegration integration) {
+        start(context, integration, null);
+    }
+
+    /**
+     * Starts the guard thread watching Android Auto and, when given, the
+     * CarPlay cluster integration (its screen mirror). Never throws.
+     */
+    public static void start(IContext context, AndroidAutoClusterIntegration integration, Object cpIntegration) {
         try {
-            KombiMapGuard guard = new KombiMapGuard(context, integration);
+            KombiMapGuard guard = new KombiMapGuard(context, integration, cpIntegration);
             Thread t = new Thread(guard, "KombiMapGuard");
             t.setDaemon(true);
             t.setPriority(Thread.MIN_PRIORITY);
@@ -96,12 +137,23 @@ public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
 
     public void run() {
         log(BUILD + " started");
+        watchKombiStage();
         try {
             stateField = AndroidAutoClusterIntegration.class.getDeclaredField("clusterState");
             stateField.setAccessible(true);
         } catch (Throwable t) {
             log("clusterState field not found, guard stopped: " + t);
             return;
+        }
+        if (cpIntegration != null) {
+            try {
+                cpStateField = cpIntegration.getClass().getDeclaredField("clusterState");
+                cpStateField.setAccessible(true);
+                log("also watching CarPlay mirror state (" + cpIntegration.getClass().getName() + ")");
+            } catch (Throwable t) {
+                cpStateField = null;
+                log("CarPlay clusterState field not found, watching Android Auto only: " + t);
+            }
         }
         openTracker();
         while (true) {
@@ -127,11 +179,41 @@ public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
         if (!codingLogged) {
             logNavMapTransmissionMode();
         }
-        boolean rendering = stateField.getInt(integration) == CL_RENDERING;
+        pollViewSize(now);
+        boolean aaRendering = stateField.getInt(integration) == CL_RENDERING;
+        boolean cpRendering = false;
+        if (cpStateField != null) {
+            try {
+                cpRendering = cpStateField.getInt(cpIntegration) == CL_RENDERING;
+            } catch (Throwable t) {
+                if (!cpRenderingLogged) {
+                    cpRenderingLogged = true;
+                    log("reading CarPlay clusterState failed: " + t);
+                }
+            }
+        }
+        boolean rendering = aaRendering || cpRendering;
+        if (rendering && !hidden && DisplayManagerMIB2High.setAltVideoActive(true)) {
+            log((cpRendering ? "CarPlay" : "AA") + " video rendering, cockpit shows displayable "
+                    + DisplayManagerMIB2High.DISPLAYABLE_ID_ALT_VIDEO + " in place of the native map");
+            hidden = true;
+            altVideo = true;
+            showAt = 0L;
+            return;
+        }
+        if (altVideo) {
+            if (!rendering) {
+                DisplayManagerMIB2High.setAltVideoActive(false);
+                log("cluster video stopped, cockpit shows the native map context again");
+                hidden = false;
+                altVideo = false;
+            }
+            return;
+        }
         if (rendering && (!hidden || now - lastApply >= REAPPLY_MS)) {
             if (!hidden) {
                 showAt = 0L;
-                log("AA video rendering, hiding native cockpit map"
+                log((cpRendering ? "CarPlay mirror" : "AA video") + " rendering, hiding native cockpit map"
                         + " (viewer=" + (kombiViewer != null) + " mapCluster=" + (mapClusterService != null) + ")");
                 if (!servicesDumped) {
                     servicesDumped = true;
@@ -142,7 +224,7 @@ public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
             hidden = true;
             lastApply = now;
         } else if (!rendering && hidden) {
-            log("AA video stopped, showing native cockpit map in " + SHOW_DELAY_MS + " ms");
+            log("cluster video stopped, showing native cockpit map in " + SHOW_DELAY_MS + " ms");
             hidden = false;
             showAt = now + SHOW_DELAY_MS;
         }
@@ -386,6 +468,100 @@ public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
             log("navMapTransmissionMode not readable: " + t);
         }
         codingLogged = true;
+    }
+
+    /**
+     * The cockpit view (big map with small gauges = big stage, or big gauges)
+     * reaches the terminal mode through its event bus as updateKombiStage.
+     * Written to /tmp/altscreen_view for the dio_manager hook, which moves
+     * the iPhone's cluster cards into the matching view area.
+     */
+    private void watchKombiStage() {
+        try {
+            context.getEventBus().registerListener(new DefaultEventListener() {
+                public void updateKombiStage(boolean bigStage) {
+                    log("kombi stage: " + (bigStage ? "big (large map)" : "small (big gauges)"));
+                    writeView(bigStage);
+                }
+            });
+            log("listening for kombi stage changes");
+        } catch (Throwable t) {
+            log("kombi stage listener not registered: " + t);
+        }
+    }
+
+    /**
+     * The cockpit view as the navigation's ViewSizeChangeHandler reads it:
+     * IViewSizeManager.getCurrentViewSize() == 1 is the small stage (big
+     * gauges, map in the centre window), anything else the big stage (large
+     * map). Neither the terminal mode's updateKombiStage nor a navigation BAP
+     * indication arrives when the driver presses View on the A6, so the
+     * service is polled once a second and changes go to /tmp/altscreen_view.
+     */
+    private void pollViewSize(long now) {
+        if (viewSizeManager == null) {
+            if (bundleContext == null || now - viewSizeLookup < LOOKUP_RETRY_MS) {
+                return;
+            }
+            viewSizeLookup = now;
+            viewSizeTries++;
+            try {
+                ServiceReference ref = bundleContext.getServiceReference(VIEW_SIZE_CLASS);
+                Object svc = ref != null ? bundleContext.getService(ref) : null;
+                if (svc instanceof IViewSizeManager) {
+                    viewSizeManager = (IViewSizeManager) svc;
+                    log("IViewSizeManager found (" + svc.getClass().getName() + ")");
+                } else if (viewSizeTries == 6) {
+                    log("IViewSizeManager not registered after 30 s (" + svc + "), services with ViewSize:");
+                    ServiceReference[] refs = bundleContext.getServiceReferences(null, null);
+                    for (int i = 0; refs != null && i < refs.length; i++) {
+                        Object names = refs[i].getProperty("objectClass");
+                        if (names instanceof String[]) {
+                            String[] n = (String[]) names;
+                            for (int j = 0; j < n.length; j++) {
+                                if (n[j].indexOf("iewSize") >= 0) {
+                                    log("  service: " + n[j]);
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Throwable t) {
+                if (viewSizeTries == 1) {
+                    log("IViewSizeManager lookup failed: " + t);
+                }
+            }
+            if (viewSizeManager == null) {
+                return;
+            }
+        }
+        int size;
+        try {
+            size = viewSizeManager.getCurrentViewSize();
+        } catch (Throwable t) {
+            return;
+        }
+        if (size != lastViewSize) {
+            lastViewSize = size;
+            log("cockpit view size " + size + (size == 1 ? " (small stage, big gauges)" : " (big stage, large map)"));
+            writeView(size != 1);
+        }
+    }
+
+    private static void writeView(boolean bigStage) {
+        FileOutputStream out = null;
+        try {
+            out = new FileOutputStream("/tmp/altscreen_view", false);
+            out.write((bigStage ? "large\n" : "small\n").getBytes());
+        } catch (Throwable t) {
+        } finally {
+            if (out != null) {
+                try {
+                    out.close();
+                } catch (Throwable t) {
+                }
+            }
+        }
     }
 
     private void log(String msg) {

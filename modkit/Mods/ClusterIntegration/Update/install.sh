@@ -18,6 +18,11 @@
 #     diag.txt            hook logs only, no cluster service injected,
 #                         installed config set to turn-by-turn only
 #     enable_carplay.txt  install the CarPlay hook and full JAR on Audi
+#     enable_carplay_hook.txt  Audi: install the CarPlay hook (dio_manager
+#                         wrapper + dio_cluster.so) but keep the Audi JAR; the
+#                         CarPlay cluster integration is started from
+#                         AndroidAuto2Subsystem, the stock CarPlayDSIManager
+#                         keeps running CarPlay
 #     config_overrides.txt  key=value lines applied to the installed
 #                         cluster_config.json "config" block (e.g. forceRHD=true)
 #     no_stub.txt         Audi: do not install the StorageMountHandler stand-in
@@ -153,7 +158,15 @@ files_identical() {
 
 # ex: MH2p_US_PO416_P2870 (Porsche), MH2p_ER_AUG35_P2873 (Audi e-tron),
 #     MH2p_ER_AU_P2873 (Audi units without a TYPE code, e.g. Q3/A1)
-export RELEASE_VERSION=`/mnt/app/armle/usr/bin/pc b:46924065:401 | cut -c 61- | sed ':a;N;$!ba;s/\n//g' | sed -e 's/\.//g' | sed -e 's/ //g'`
+# The ModKit exports RELEASE_VERSION (same pc call) before running this
+# script; use it when present. Run by hand over SSH, pc needs the HMI's
+# library path and working directory and aborts without them, so a value
+# set by the caller (export RELEASE_VERSION=MH2p_...) is taken as is.
+if [[ -z "${RELEASE_VERSION:-}" ]]; then
+    export RELEASE_VERSION=`/mnt/app/armle/usr/bin/pc b:46924065:401 2>/dev/null | cut -c 61- | sed ':a;N;$!ba;s/\n//g' | sed -e 's/\.//g' | sed -e 's/ //g'`
+else
+    export RELEASE_VERSION
+fi
 # AS, CN, ER, US, ...
 export REGION="$(echo $RELEASE_VERSION | cut -d'_' -f2)"
 # VW, AU, PO, LB, ...
@@ -247,12 +260,20 @@ if [[ ! -f "$APPS_DIR/gal" && ! -f "$APPS_DIR/gal.real" ]]; then
     print "WARN: $APPS_DIR/gal not found. Android Auto cluster video hook cannot be installed on this unit; BAP turn-by-turn (JAR) will still be installed."
 fi
 
-# CarPlay is opt-in on Audi (enable_carplay.txt). Without it the Android-
-# Auto-only JAR from aa_only/ is required; refuse to fall back to the full
-# JAR, which would shadow Audi's CarPlay DSI manager.
+# CarPlay on Audi: two independent opt-ins. enable_carplay.txt installs the
+# full JAR (shadows Audi's CarPlayDSIManager with the Porsche copy; known not
+# to link on P2873) and the dio_manager hook. enable_carplay_hook.txt installs
+# only the hook and keeps the Audi JAR from aa_only/, whose
+# AndroidAuto2Subsystem starts the CarPlay cluster integration itself.
+# Without either marker the Audi JAR is required; refuse to fall back to the
+# full JAR.
 CARPLAY_HOOK=1
-[[ "$OEM" == "AU" && ! -e "$MOD_ROOT/enable_carplay.txt" ]] && CARPLAY_HOOK=0
-if [[ $CARPLAY_HOOK -eq 0 ]]; then
+FULL_JAR=1
+if [[ "$OEM" == "AU" ]]; then
+    [[ -e "$MOD_ROOT/enable_carplay.txt" ]] || FULL_JAR=0
+    [[ -e "$MOD_ROOT/enable_carplay.txt" || -e "$MOD_ROOT/enable_carplay_hook.txt" ]] || CARPLAY_HOOK=0
+fi
+if [[ $FULL_JAR -eq 0 ]]; then
     AA_JAR="$(ls -1t "$MOD_PATH"/aa_only/ClusterIntegration_*_aa.jar 2>/dev/null | head -1)"
     if [[ -z "$AA_JAR" || ! -f "$AA_JAR" ]]; then
         print -u2 "ERROR: $MOD_PATH/aa_only/ClusterIntegration_*_aa.jar not found. Aborting before any change."
@@ -577,15 +598,21 @@ swap_binary_for_wrapper() {
     print "install wrapper:   $dst_active"
 }
 
-# Java classes: on Audi without enable_carplay.txt install the Android-Auto-
-# only JAR (Update/aa_only/*_aa.jar, built by modkit/build_sd_package.sh,
-# presence checked in the preflight). It lacks the CarPlay classes, so the
+# Java classes: on Audi without enable_carplay.txt install the Audi JAR
+# (Update/aa_only/*_aa.jar, built by modkit/build_sd_package.sh, presence
+# checked in the preflight). It lacks the CarPlay DSI manager classes, so the
 # stock CarPlayDSIManager stays in charge of CarPlay and only
-# AndroidAuto2Subsystem is shadowed. The full JAR is used on Porsche and on
-# Audi with enable_carplay.txt.
-if [[ $CARPLAY_HOOK -eq 0 ]]; then
+# AndroidAuto2Subsystem is shadowed; that class also starts the CarPlay
+# cluster integration (turn-by-turn over BAP, fed by the dio_manager hook
+# when enable_carplay_hook.txt is set). The full JAR is used on Porsche and
+# on Audi with enable_carplay.txt.
+if [[ $FULL_JAR -eq 0 ]]; then
     NEW_JAR="$AA_JAR"
-    print "java classes:      Android Auto only (${NEW_JAR##*/}; CarPlay classes not installed)"
+    if [[ $CARPLAY_HOOK -eq 1 ]]; then
+        print "java classes:      Audi JAR (${NEW_JAR##*/}; CarPlay cluster integration started from AndroidAuto2Subsystem, stock CarPlayDSIManager kept)"
+    else
+        print "java classes:      Audi JAR (${NEW_JAR##*/}; CarPlay DSI manager not shadowed)"
+    fi
 else
     print "java classes:      full JAR (${NEW_JAR##*/})"
 fi
@@ -793,7 +820,7 @@ else
             print "restore original:  $APPS_DIR/dio_manager.real -> $APPS_DIR/dio_manager (carplay hook disabled)" && \
             note "restore $APPS_DIR/dio_manager from=$APPS_DIR/dio_manager.real"
     fi
-    print "carplay hook:      OFF (Audi default; create Mods/ClusterIntegration/enable_carplay.txt to install it)"
+    print "carplay hook:      OFF (Audi default; create Mods/ClusterIntegration/enable_carplay_hook.txt to install it with the Audi JAR)"
 fi
 
 # Diagnostic mode. If Mods/ClusterIntegration/diag.txt exists on the SD card,
@@ -908,6 +935,26 @@ check_hook_symbols() {
 }
 check_hook_symbols
 [[ -n "$LSD_TAIL" && "$LSD_TAIL" != "$LSD_DIR/lsd.jar" ]] && rm -f "$LSD_TAIL"
+
+# Persist script: the ModKit copies Mods/<mod>/Persist with "cp -rf" after this
+# script. On a card written by macOS (FAT32) the QNX driver sees a bogus "..."
+# directory entry and that copy fails with "Filename too long", so the cluster
+# daemon would never be started at boot. Copy the one file by explicit path
+# here; the ModKit's own attempt afterwards may still fail and does no harm.
+PERSIST_SRC="$MOD_ROOT/Persist/install.sh"
+PERSIST_DST="/mnt/ota/modkit/Mods/${MOD_ROOT##*/}/Persist"
+if [[ -f "$PERSIST_SRC" ]]; then
+    if [[ ! -e /mnt/ota ]]; then mount -t qnx6 /dev/mnanda0t177.16 /mnt/ota 2>/dev/null; fi
+    mount -uw /mnt/ota 2>/dev/null
+    if mkdir -p "$PERSIST_DST" 2>/dev/null && cp -f "$PERSIST_SRC" "$PERSIST_DST/install.sh" 2>/dev/null; then
+        chmod 755 "$PERSIST_DST/install.sh" 2>/dev/null
+        print "persist script:    copied to $PERSIST_DST/install.sh (explicit path)"
+    else
+        print "persist script:    WARN could not copy $PERSIST_SRC to $PERSIST_DST"
+    fi
+else
+    print "persist script:    $PERSIST_SRC not visible to the unit"
+fi
 
 sync
 print ""

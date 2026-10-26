@@ -30,6 +30,10 @@ PKG=de/audi/app/terminalmode/smartphone/androidauto2
 SOURCES=(
     "$REPO/lsd/$PKG/AndroidAuto2Subsystem.java"
     "$REPO/lsd/$PKG/nav/KombiMapGuard.java"
+    "$REPO/lsd/$PKG/nav/CarPlayScreenBridge.java"
+    "$REPO/lsd/de/eso/hmiservice/display/DisplayManagerMIB2High.java"
+    "$REPO/lsd/de/audi/tghu/navi/app/map/osgi/wrapper/IMapClusterServiceWrapper.java"
+    "$REPO/lsd/de/audi/tghu/navi/app/osgi/wrapper/CombiBAPServiceNaviListenerWrapper.java"
 )
 
 [[ -d "$STOCK/de/audi/tghu" ]] || { echo "error: stock classes not found under $STOCK" >&2; exit 1; }
