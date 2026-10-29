@@ -68,7 +68,7 @@ import java.lang.reflect.Method;
  */
 public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
 
-    public static final String BUILD = "kombi-guard 2026-10-26c (AA + CarPlay, displayable 62, view size)";
+    public static final String BUILD = "kombi-guard 2026-10-29a (AA + CarPlay, displayable 62, view size, video check)";
 
     private static final String MAP_CLUSTER_CLASS = "de.audi.tghu.navi.app.cluster.IMapClusterService";
     private static final int CL_RENDERING = 2;
@@ -102,6 +102,8 @@ public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
     private boolean codingLogged = false;
     private boolean servicesDumped = false;
     private boolean altVideo = false;
+    private boolean lastCpRendering = false;
+    private boolean lastCpVideo = false;
     private static final String VIEW_SIZE_CLASS = "de.audi.atip.mmicombi.IViewSizeManager";
     private IViewSizeManager viewSizeManager;
     private long viewSizeLookup = 0L;
@@ -192,7 +194,19 @@ public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
                 }
             }
         }
-        boolean rendering = aaRendering || cpRendering;
+        /* CarPlay: the dio_manager hook holds /tmp/altscreen_video while
+         * decoded frames reach the cluster daemon. Without it (stream 111
+         * blocked or not started yet) the video context would only show a
+         * black panel, so the native map stays. */
+        boolean cpVideo = cpRendering && new java.io.File("/tmp/altscreen_video").exists();
+        if (cpRendering != lastCpRendering || cpVideo != lastCpVideo) {
+            if (cpRendering && !cpVideo) {
+                log("CarPlay on the main screen, no cluster video yet - native map stays");
+            }
+            lastCpRendering = cpRendering;
+            lastCpVideo = cpVideo;
+        }
+        boolean rendering = aaRendering || cpVideo;
         if (rendering && !hidden && DisplayManagerMIB2High.setAltVideoActive(true)) {
             log((cpRendering ? "CarPlay" : "AA") + " video rendering, cockpit shows displayable "
                     + DisplayManagerMIB2High.DISPLAYABLE_ID_ALT_VIDEO + " in place of the native map");
