@@ -13,7 +13,8 @@
 # - Restores original gal binary: removes wrapper at /mnt/app/eso/bin/apps/gal
 #   and moves gal.real back to gal.
 # - Same for dio_manager.
-# - Backs up and removes JAR + native binaries from their install dirs
+# - Backs up and removes JAR + native binaries (altscreen.so and its packet
+#   filter script included) from their install dirs
 #   (every ClusterIntegration_* jar, which includes the Audi stand-in jar
 #   ClusterIntegration_StorageMountHandler_stub.jar).
 # - If NAME.real is missing but NAME is still our wrapper, restores the
@@ -140,6 +141,13 @@ backup_and_remove "$CLUSTER_DIR/cluster"
 backup_and_remove "$CLUSTER_DIR/gal_cluster.so"
 backup_and_remove "$CLUSTER_DIR/dio_cluster.so"
 backup_and_remove "$CLUSTER_DIR/cluster_config.json"
+# CarPlay map video (enable_carplay_altscreen.txt); altscreen.conf is the
+# optional per-car tuning file, kept in Backup/ like the rest. The packet
+# filter rule for TCP 6031 is gone after the next restart.
+backup_and_remove "$CLUSTER_DIR/altscreen.so"
+backup_and_remove "$CLUSTER_DIR/altscreen_pf.sh"
+[[ -f "$CLUSTER_DIR/altscreen.conf" ]] && backup_and_remove "$CLUSTER_DIR/altscreen.conf"
+[[ -f "$CLUSTER_DIR/altscreen_off" ]] && rm -f "$CLUSTER_DIR/altscreen_off" && print "remove:            $CLUSTER_DIR/altscreen_off" && note "remove $CLUSTER_DIR/altscreen_off"
 [[ -f "$CLUSTER_DIR/diag_mode" ]] && rm -f "$CLUSTER_DIR/diag_mode" && print "remove:            $CLUSTER_DIR/diag_mode" && note "remove $CLUSTER_DIR/diag_mode"
 [[ -f "$CLUSTER_DIR/daemon_verbose" ]] && rm -f "$CLUSTER_DIR/daemon_verbose" && print "remove:            $CLUSTER_DIR/daemon_verbose" && note "remove $CLUSTER_DIR/daemon_verbose"
 

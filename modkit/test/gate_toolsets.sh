@@ -28,6 +28,7 @@ setup() { # $1 release  $2 lsd.jar: none|aa|aa+sm  $3 jxe: none|aa|aa+sm  $4 mar
   rm -rf "$SCR/fakesd"; mkdir -p "$SCR/fakesd/Mods/ClusterIntegration"; cp -r "$REPO/modkit/Mods/ClusterIntegration/Update" "$SCR/fakesd/Mods/ClusterIntegration/"
   cp "$SCR/zip34/Mods/ClusterIntegration/Update/ClusterIntegration_v0034_beta2_candidate_90d0b76.jar" "$SCR/fakesd/Mods/ClusterIntegration/Update/"
   for f in cluster gal_cluster.so dio_cluster.so; do printf 'payload %s\n' "$f" > "$SCR/fakesd/Mods/ClusterIntegration/Update/$f"; done
+  printf 'payload aa cluster\n' > "$SCR/fakesd/Mods/ClusterIntegration/Update/aa_only/cluster"
   cp $SCR/zip34/Mods/ClusterIntegration/Update/cluster_config.json "$SCR/fakesd/Mods/ClusterIntegration/Update/"
   # keep the restricted PATH: the unit's /usr/bin is QNX, the harness box's is not
   sed -i 's|^export PATH=.*|export PATH="$PATH:/mnt/app/armle/usr/bin:/mnt/app/armle/bin"|' "$SCR/fakesd/Mods/ClusterIntegration/Update/install.sh" "$SCR/fakesd/Mods/ClusterIntegration/Update/uninstall.sh"
@@ -91,7 +92,7 @@ setup MH2p_US_PO416_P2870 aa aa ""; out=$(run)
 [[ ! -f $STUB ]] && ! echo "$out" | grep -q 'stand-in class:' && res "G Porsche: no stub line, no stub" PASS || res "G Porsche no stub" FAIL
 echo "$out" | grep -q 'WARNING: StorageMountHandler not found in this Porsche' && res "G Porsche warning when SM missing (search worked)" PASS || res "G Porsche warning (or skipped)" "n/a"
 echo "=== H: backup verification path"
-setup MH2p_ER_AUG35_P2873 aa aa ""; run >/dev/null; printf 'changed\n' > "$MOD_PATH/cluster"; out=$(run)
+setup MH2p_ER_AUG35_P2873 aa aa ""; run >/dev/null; printf 'changed\n' > "$MOD_PATH/aa_only/cluster"; out=$(run)
 echo "$out" | grep -E 'file compare|backup verified|backup target.*cluster ' | sed 's/^/    | /'
 echo "$out" | grep -q 'backup target:     /mnt/app/eso/bin/apps/cluster/cluster ->' && res "H changed file backed up and replaced" PASS || res "H changed file replaced" FAIL
 if echo "$out" | grep -q 'file compare:      wc'; then echo "$out" | grep -q 'backup verified:   by size, line and word counts' && res "H wc fingerprint verification reported" PASS || res "H wc fingerprint reported" FAIL; elif echo "$out" | grep -q 'file compare:      size only'; then echo "$out" | grep -q 'backup verified:   by size only' && res "H size-only verification reported" PASS || res "H size-only reported" FAIL; else res "H content comparator used" PASS; fi
@@ -140,12 +141,12 @@ setup MH2p_ER_AUG35_P2873 aa aa ""; run >/dev/null
 sed -i 's/"heartbeatInterval": 2000/"heartbeatInterval": 3000/' "$MOD_PATH/cluster_config.json"; out=$(run)
 grep -q '"heartbeatInterval": 3000' /mnt/app/eso/bin/apps/cluster/cluster_config.json && echo "$out" | grep -q 'backup target:     /mnt/app/eso/bin/apps/cluster/cluster_config.json' && res "J same-size config edit installed (not skipped)" PASS || res "J same-size config edit installed" FAIL
 # same-size, same-counts binary with a new mtime: must be installed
-printf 'payload cluster\n' > "$MOD_PATH/cluster"; run >/dev/null; printf 'payloae cluster\n' > "$MOD_PATH/cluster"; out=$(run)
+printf 'payload cluster\n' > "$MOD_PATH/aa_only/cluster"; run >/dev/null; printf 'payloae cluster\n' > "$MOD_PATH/aa_only/cluster"; out=$(run)
 [[ "$(cat /mnt/app/eso/bin/apps/cluster/cluster)" == "payloae cluster" ]] && res "J same-size same-counts binary installed" PASS || { res "J same-size binary installed" FAIL; echo "$out" | grep cluster/cluster; }
 # unchanged file: still skipped on the next run
 out=$(run); echo "$out" | grep -q 'skip identical:    /mnt/app/eso/bin/apps/cluster/cluster$' && res "J unchanged file still skipped" PASS || res "J unchanged file still skipped" FAIL
 # backup verification still passes with cp -p copies
-printf 'payloaf cluster\n' > "$MOD_PATH/cluster"; out=$(run); echo "$out" | grep -q 'ERROR: backup verify' && res "J backup verify ok with mtime rule" FAIL || res "J backup verify ok with mtime rule" PASS
+printf 'payloaf cluster\n' > "$MOD_PATH/aa_only/cluster"; out=$(run); echo "$out" | grep -q 'ERROR: backup verify' && res "J backup verify ok with mtime rule" FAIL || res "J backup verify ok with mtime rule" PASS
 echo "=== K: signature check ignores the mod's own jars"
 rm -rf "$SCR/refk" && mkdir -p "$SCR/refk/Update/audi" && cp "$REPO/modkit/Mods/ClusterIntegration/Update/audi/ClusterIntegration_StorageMountHandler_stub.jar" "$SCR/refk/Update/audi/" && mkjar "$SCR/refk/lsd.jar" 0 $AA.class
 out=$(JAVA_TOOL_OPTIONS= bash "$REPO/modkit/check_hmi_signatures.sh" "$SCR/zip34/Mods/ClusterIntegration/Update/ClusterIntegration_v0034_beta2_candidate_90d0b76.jar" "$SCR/refk" 2>&1)
@@ -181,7 +182,7 @@ ls "$MOD_PATH/Backup" | grep -q 'cluster_config.json.backup' && res "N backup of
 rm -rf /mnt/app /fs /ifs "$SCR/jarsrc" /tmp/gal_preload.log
 echo "=== O: gal wrapper starts the cluster daemon when it is missing"
 setup MH2p_ER_AUG35_P2873 aa aa ""; run >/dev/null
-printf '#!/bin/sh\necho "daemon-stub $*"\nsleep 20\n' > "$MOD_PATH/cluster"; run >/dev/null   # a daemon stand-in that stays alive
+printf '#!/bin/sh\necho "daemon-stub $*"\nsleep 20\n' > "$MOD_PATH/aa_only/cluster"; run >/dev/null   # a daemon stand-in that stays alive
 printf '#!/bin/sh\nexit 0\n' > /mnt/app/eso/bin/apps/gal.real; chmod 755 /mnt/app/eso/bin/apps/gal.real /mnt/app/eso/bin/apps/cluster/cluster
 pkill -f '^/bin/sh /mnt/app/eso/bin/apps/cluster/cluster daemon' 2>/dev/null; rm -f /tmp/gal_preload.log
 PATH="$SCR/stubs:$PATH" mksh /mnt/app/eso/bin/apps/gal >/dev/null 2>&1; sleep 1

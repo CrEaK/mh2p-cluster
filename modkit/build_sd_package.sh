@@ -185,6 +185,17 @@ for extra in ${CLUSTER_EXTRA_PATCHES:-}; do
     cp "$WORK/cluster.extra" "$CLUSTER_BIN" && chmod 755 "$CLUSTER_BIN"
 done
 
+# Daemon for the Audi JAR. That JAR's DisplayManagerMIB2High shows the video
+# on displayable 62 (cluster contexts 80/81) instead of Audi's map
+# displayable 33, so the daemon next to it must post its window there
+# (modkit/patches/cluster.disp62.patches.txt). install.sh installs
+# Update/aa_only/cluster whenever it installs the Audi JAR; Porsche and the
+# full JAR keep Update/cluster on 33.
+DISP62_PATCHES="$HERE/patches/cluster.disp62.patches.txt"
+python3 "$HERE/patches/apply_patches.py" "$PKG/Mods/ClusterIntegration/Update/cluster" "$DISP62_PATCHES" \
+    "$PKG/Mods/ClusterIntegration/Update/aa_only/cluster" | sed 's/^/  disp62:  /'
+chmod 755 "$PKG/Mods/ClusterIntegration/Update/aa_only/cluster"
+
 # Cluster display entry offered to the phone. With modkit/template/template.txt
 # present (or TEMPLATE_TXT=<file>), the 54-byte entry inside gal_cluster.so is
 # rebuilt with those margins/insets (modkit/template/cluster_template_tool.py:
