@@ -148,6 +148,7 @@ backup_and_remove "$CLUSTER_DIR/altscreen.so"
 backup_and_remove "$CLUSTER_DIR/altscreen_pf.sh"
 [[ -f "$CLUSTER_DIR/altscreen.conf" ]] && backup_and_remove "$CLUSTER_DIR/altscreen.conf"
 [[ -f "$CLUSTER_DIR/altscreen_off" ]] && rm -f "$CLUSTER_DIR/altscreen_off" && print "remove:            $CLUSTER_DIR/altscreen_off" && note "remove $CLUSTER_DIR/altscreen_off"
+[[ -f "$CLUSTER_DIR/altscreen_zoom_scale" ]] && rm -f "$CLUSTER_DIR/altscreen_zoom_scale" && print "remove:            $CLUSTER_DIR/altscreen_zoom_scale" && note "remove $CLUSTER_DIR/altscreen_zoom_scale"
 [[ -f "$CLUSTER_DIR/diag_mode" ]] && rm -f "$CLUSTER_DIR/diag_mode" && print "remove:            $CLUSTER_DIR/diag_mode" && note "remove $CLUSTER_DIR/diag_mode"
 [[ -f "$CLUSTER_DIR/daemon_verbose" ]] && rm -f "$CLUSTER_DIR/daemon_verbose" && print "remove:            $CLUSTER_DIR/daemon_verbose" && note "remove $CLUSTER_DIR/daemon_verbose"
 

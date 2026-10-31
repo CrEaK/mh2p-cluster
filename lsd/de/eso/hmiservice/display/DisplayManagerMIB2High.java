@@ -16,6 +16,9 @@
  *   context is shown again.
  * - The HMI keeps seeing its own context ids: getCurrentContextID and the
  *   listener callbacks of the cluster terminal translate 80/81 back.
+ * - While the video is active, refreshZoomScale (polled by KombiMapGuard)
+ *   hides the Audi map's zoom scale in the cockpit status bar, see
+ *   ZoomScaleHider.
  */
 package de.eso.hmiservice.display;
 
@@ -80,6 +83,24 @@ IDisplayManagerKombiControl {
     public static boolean isAltVideoActive() {
         DisplayManagerMIB2High dm = instance;
         return dm != null && dm.altVideoActive;
+    }
+
+    /**
+     * Hides the zoom scale of the cockpit status bar while the video is
+     * active, shows it otherwise. Returns a line to log when something
+     * changed, or null.
+     */
+    public static String refreshZoomScale() {
+        DisplayManagerMIB2High dm = instance;
+        if (dm == null) {
+            return null;
+        }
+        try {
+            return ZoomScaleHider.apply(dm.framework.getHMIService(), dm.altVideoActive);
+        }
+        catch (Throwable t) {
+            return "zoom scale: " + t;
+        }
     }
 
     private void applyAltVideo(boolean on) {

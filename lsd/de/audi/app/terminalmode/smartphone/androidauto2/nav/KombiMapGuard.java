@@ -68,7 +68,7 @@ import java.lang.reflect.Method;
  */
 public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
 
-    public static final String BUILD = "kombi-guard 2026-10-29a (AA + CarPlay, displayable 62, view size, video check)";
+    public static final String BUILD = "kombi-guard 2026-10-31c (AA + CarPlay, displayable 62, view size, video check, zoom scale, dm watchdog, normal priority)";
 
     private static final String MAP_CLUSTER_CLASS = "de.audi.tghu.navi.app.cluster.IMapClusterService";
     private static final int CL_RENDERING = 2;
@@ -79,6 +79,9 @@ public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
     // map ever flickers back between re-applies.
     private static final long REAPPLY_MS = 10000L;
     private static final long SHOW_DELAY_MS = 1200L;
+    private static final long DM_BLOCK_MS = 5000L;
+    private static volatile long dmCallStart;
+    private static boolean javacoreWritten;
 
     private final IContext context;
     private final AndroidAutoClusterIntegration integration;
@@ -130,7 +133,12 @@ public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
             KombiMapGuard guard = new KombiMapGuard(context, integration, cpIntegration);
             Thread t = new Thread(guard, "KombiMapGuard");
             t.setDaemon(true);
-            t.setPriority(Thread.MIN_PRIORITY);
+            /* Not MIN_PRIORITY: QNX schedules strictly by priority, and while
+             * the HMI starts up a minimum-priority thread got no CPU for 9 to
+             * 43 s (A6, 2026-10-31), so the cockpit kept the Audi map although
+             * CarPlay and its cluster video were up. A tick is a few field
+             * reads and a file check. */
+            t.setPriority(Thread.NORM_PRIORITY);
             t.start();
         } catch (Throwable t) {
             safeLog(integration, "KOMBI_MAP: guard not started: " + t);
@@ -207,7 +215,11 @@ public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
             lastCpVideo = cpVideo;
         }
         boolean rendering = aaRendering || cpVideo;
-        if (rendering && !hidden && DisplayManagerMIB2High.setAltVideoActive(true)) {
+        String zoomScale = DisplayManagerMIB2High.refreshZoomScale();
+        if (zoomScale != null) {
+            log(zoomScale);
+        }
+        if (rendering && !hidden && setAltVideo(true)) {
             log((cpRendering ? "CarPlay" : "AA") + " video rendering, cockpit shows displayable "
                     + DisplayManagerMIB2High.DISPLAYABLE_ID_ALT_VIDEO + " in place of the native map");
             hidden = true;
@@ -217,7 +229,7 @@ public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
         }
         if (altVideo) {
             if (!rendering) {
-                DisplayManagerMIB2High.setAltVideoActive(false);
+                setAltVideo(false);
                 log("cluster video stopped, cockpit shows the native map context again");
                 hidden = false;
                 altVideo = false;
@@ -575,6 +587,52 @@ public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
                 } catch (Throwable t) {
                 }
             }
+        }
+    }
+
+    /* Seen at start-up on the A6 (2026-10-31): the switch to the video
+     * context returned 9 s and 43 s after CarPlay and the video were up,
+     * with the Audi map shown meanwhile. The call is timed; when it blocks
+     * longer than DM_BLOCK_MS, a watchdog logs it and writes one J9 javacore
+     * per boot, whose thread stacks show who holds the display manager. */
+    private boolean setAltVideo(boolean on) {
+        final long start = System.currentTimeMillis();
+        dmCallStart = start;
+        Thread watch = new Thread("kombi-guard-dm-watch") {
+            public void run() {
+                try {
+                    Thread.sleep(DM_BLOCK_MS);
+                } catch (InterruptedException e) {
+                    return;
+                }
+                if (dmCallStart == start) {
+                    log("display manager call blocked for " + DM_BLOCK_MS + " ms" + javaDump());
+                }
+            }
+        };
+        watch.setDaemon(true);
+        watch.setPriority(Thread.NORM_PRIORITY);
+        watch.start();
+        boolean ok = DisplayManagerMIB2High.setAltVideoActive(on);
+        dmCallStart = 0L;
+        watch.interrupt();
+        long took = System.currentTimeMillis() - start;
+        if (took >= 1000L) {
+            log("display manager call (" + (on ? "video" : "native map") + ") took " + took + " ms");
+        }
+        return ok;
+    }
+
+    private static String javaDump() {
+        if (javacoreWritten) {
+            return "";
+        }
+        javacoreWritten = true;
+        try {
+            com.ibm.jvm.Dump.JavaDump();
+            return ", javacore written";
+        } catch (Throwable t) {
+            return ", no javacore: " + t;
         }
     }
 
