@@ -79,6 +79,11 @@ if [[ -d "$PERSIST_DIR" ]]; then
     mount -uw /mnt/ota 2>/dev/null
     rm -rf "$PERSIST_DIR" 2>/dev/null && print "remove persist:    $PERSIST_DIR" || print "WARN: could not remove $PERSIST_DIR"
 fi
+# The "Carplay Map" setting of the cockpit navigation menu (CarPlayMapSetting).
+if [[ -f /mnt/ota/modkit/carplay_map.txt ]]; then
+    mount -uw /mnt/ota 2>/dev/null
+    rm -f /mnt/ota/modkit/carplay_map.txt && print "remove:            /mnt/ota/modkit/carplay_map.txt"
+fi
 print ""
 
 # Reverse of swap_binary_for_wrapper. If NAME.real exists, remove the
@@ -148,7 +153,6 @@ backup_and_remove "$CLUSTER_DIR/altscreen.so"
 backup_and_remove "$CLUSTER_DIR/altscreen_pf.sh"
 [[ -f "$CLUSTER_DIR/altscreen.conf" ]] && backup_and_remove "$CLUSTER_DIR/altscreen.conf"
 [[ -f "$CLUSTER_DIR/altscreen_off" ]] && rm -f "$CLUSTER_DIR/altscreen_off" && print "remove:            $CLUSTER_DIR/altscreen_off" && note "remove $CLUSTER_DIR/altscreen_off"
-[[ -f "$CLUSTER_DIR/altscreen_zoom_scale" ]] && rm -f "$CLUSTER_DIR/altscreen_zoom_scale" && print "remove:            $CLUSTER_DIR/altscreen_zoom_scale" && note "remove $CLUSTER_DIR/altscreen_zoom_scale"
 [[ -f "$CLUSTER_DIR/diag_mode" ]] && rm -f "$CLUSTER_DIR/diag_mode" && print "remove:            $CLUSTER_DIR/diag_mode" && note "remove $CLUSTER_DIR/diag_mode"
 [[ -f "$CLUSTER_DIR/daemon_verbose" ]] && rm -f "$CLUSTER_DIR/daemon_verbose" && print "remove:            $CLUSTER_DIR/daemon_verbose" && note "remove $CLUSTER_DIR/daemon_verbose"
 

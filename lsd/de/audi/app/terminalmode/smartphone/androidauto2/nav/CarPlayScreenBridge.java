@@ -37,6 +37,11 @@ import de.audi.app.terminalmode.smartphone.carplay.CarPlayClusterIntegration;
  *   bridge maps the Audi screen resource onto the integration's id and drops
  *   the audio resource. Owner values match (1 = main unit, 2 = device);
  *   owner 0 (undefined, sent in mode change responses) changes nothing.
+ * - In altscreen mode (CarPlay map video from the dio_manager hook) the
+ *   owner no longer decides: CarPlayMapSwitch keeps the CarPlay map in the
+ *   cockpit while the "Carplay Map" menu setting is on and the cockpit video
+ *   runs, also while the MMI shows the radio or the reverse camera. The
+ *   bridge only passes it the real owner for the log.
  *
  * Every other callback is a no-op. Java 1.4 source level.
  */
@@ -46,10 +51,21 @@ public class CarPlayScreenBridge implements DSICarplayListener, ServiceTrackerCu
     private static final int INTEGRATION_RESOURCE_MAIN_SCREEN = 1;
 
     private final CarPlayClusterIntegration integration;
+    /* null without the altScreen hook: then the owner decides as before */
+    private final CarPlayMapSwitch mapSwitch;
     private IContext context;
 
     public CarPlayScreenBridge(CarPlayClusterIntegration integration) {
         this.integration = integration;
+        CarPlayMapSwitch s = null;
+        try {
+            if (CarPlayMapSetting.isAltscreenMode()) {
+                s = CarPlayMapSwitch.start(integration);
+            }
+        } catch (Throwable t) {
+            log("DSI: Carplay Map switch failed, the MMI screen owner decides: " + t);
+        }
+        this.mapSwitch = s;
     }
 
     /**
@@ -114,7 +130,11 @@ public class CarPlayScreenBridge implements DSICarplayListener, ServiceTrackerCu
             if (resources != null) {
                 for (int i = 0; i < resources.length; i++) {
                     if (resources[i].getResourceID() == AUDI_RESOURCE_MAIN_SCREEN) {
-                        integration.onResourceChanged(INTEGRATION_RESOURCE_MAIN_SCREEN, resources[i].getOwner());
+                        if (mapSwitch != null) {
+                            mapSwitch.ownerChanged(resources[i].getOwner());
+                        } else {
+                            integration.onResourceChanged(INTEGRATION_RESOURCE_MAIN_SCREEN, resources[i].getOwner());
+                        }
                     }
                 }
             }

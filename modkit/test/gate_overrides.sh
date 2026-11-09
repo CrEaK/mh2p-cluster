@@ -76,6 +76,6 @@ rm -f "$SCR/fakesd/Mods/ClusterIntegration/enable_carplay.txt"; mksh "$MOD_PATH/
 rm -f "$SCR/fakesd/Mods/ClusterIntegration/enable_carplay_altscreen.txt"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
 python3 -c "import json;c=json.load(open('$CFG'))['config'];print(('PASS' if c['mirror']['mode']=='fill' else 'FAIL')+' altscreen off: shipped mirror.mode back')"
 [[ ! -f $AC/altscreen.so && ! -f $AC/altscreen_pf.sh && ! -f /mnt/app/eso/bin/apps/dio_manager.real ]] && echo "$out" | grep -q 'remove altscreen:' && res "altscreen off: files removed, stock dio_manager back" PASS || res "altscreen off: files removed" FAIL
-touch "$SCR/fakesd/Mods/ClusterIntegration/enable_carplay_altscreen.txt"; mksh "$MOD_PATH/install.sh" >/dev/null 2>&1; echo "phys=384,144" > $AC/altscreen.conf; touch $AC/altscreen_zoom_scale
+touch "$SCR/fakesd/Mods/ClusterIntegration/enable_carplay_altscreen.txt"; mksh "$MOD_PATH/install.sh" >/dev/null 2>&1; echo "phys=384,144" > $AC/altscreen.conf
 out=$(mksh "$MOD_PATH/uninstall.sh" 2>&1); [[ ! -d $AC && "$(head -1 /mnt/app/eso/bin/apps/dio_manager)" != "#!/bin/ksh" ]] && ls "$MOD_PATH/Backup" | grep -q '^altscreen.conf.removed' && res "altscreen: uninstall removes everything, keeps altscreen.conf in Backup" PASS || res "altscreen: uninstall" FAIL
 rm -rf /mnt/app /fs /tmp/gal_preload.log /tmp/dio_preload.log

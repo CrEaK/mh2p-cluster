@@ -68,7 +68,7 @@ import java.lang.reflect.Method;
  */
 public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
 
-    public static final String BUILD = "kombi-guard 2026-10-31c (AA + CarPlay, displayable 62, view size, video check, zoom scale, dm watchdog, normal priority)";
+    public static final String BUILD = "kombi-guard 2026-11-09b (AA + CarPlay, displayable 62, view size, video check, zoom scale, traffic logo, Carplay Map menu, dm watchdog, normal priority)";
 
     private static final String MAP_CLUSTER_CLASS = "de.audi.tghu.navi.app.cluster.IMapClusterService";
     private static final int CL_RENDERING = 2;
