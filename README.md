@@ -313,6 +313,8 @@ Emulating the head unit on a PC is not realistic: the HMI is a QNX 6.6 image for
 
 `Mods/ClusterIntegration/enable_carplay_altscreen.txt` puts the iPhone's own instrument-cluster map into the virtual cockpit: the second CarPlay video stream ("altScreen", stream type 111) that Apple Maps and Google Maps draw for a car's cluster, with the turn card, distances and ETA laid out for it. It is not a crop of the MMI screen. Built and tested on an A6 C8 with `MH2p_ER_AUG35_P2711` (libairplay 320.17.1), wireless CarPlay with an iPhone on iOS 27, in daily use since October 2026.
 
+Ready-made SD package with step-by-step guides (English: [docs/carplay-cockpit/GUIDE-EN.md](docs/carplay-cockpit/GUIDE-EN.md), German: [docs/carplay-cockpit/ANLEITUNG.md](docs/carplay-cockpit/ANLEITUNG.md)): [releases](https://github.com/CrEaK/mh2p-cluster/releases).
+
 What it does:
 
 - `altscreen.so` (source and build script in `src/altscreen/`, GPL-3.0-or-later; protocol knowledge from luka-dev's [mib2q-carplay-rgi](https://github.com/luka-dev/mib2q-carplay-rgi) altScreen work) is preloaded into `dio_manager` instead of `dio_cluster.so`. It advertises a second display (1920x720, view areas for the two cockpit layouts) to the iPhone, accepts stream 111 on TCP 6031, decrypts it (ChaCha20-Poly1305 with the pairing session's key on wireless) and writes the H.264 into the daemon's ring `/cluster_h264_shm`. It also passes the steering-wheel roller to the phone (`changeMapZoomLevel`) and switches the phone's view area when the cockpit changes between large map and large gauges (`updateViewArea`).
