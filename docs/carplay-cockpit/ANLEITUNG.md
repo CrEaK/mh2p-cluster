@@ -28,6 +28,14 @@ der Stelle der Audi-Karte. Getestet bisher nur in einem A6 C8. **Alles auf eigen
 4. **Die Karte danach nicht löschen oder überschreiben.** Auf ihr liegen die Sicherungen
    (`Mods/ClusterIntegration/Update/Backup`), die zum Deinstallieren gebraucht werden.
 
+## Auf eine neue Version aktualisieren
+
+Nicht vorher deinstallieren. Den Inhalt der neuen Zip-Datei auf **dieselbe** Karte entpacken und
+vorhandene Dateien ersetzen lassen; den Ordner `Mods/ClusterIntegration/Update/Backup` dabei nicht
+löschen (die Zip-Datei enthält keinen, er bleibt also stehen). Dann die Karte wie beim
+Installieren einstecken. Der Installer erkennt, was schon installiert ist, und ersetzt nur, was
+sich geändert hat.
+
 ## Benutzen
 
 - iPhone verbinden, in CarPlay Google Maps oder Apple Karten öffnen.

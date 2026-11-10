@@ -1,8 +1,10 @@
 /*
  * Hides the Audi map's zoom scale (magnifier or auto-zoom icon, "400 m",
- * scale bar) and traffic provider logo ("TMC", "TMC PRO", online traffic)
- * in the cockpit while the CarPlay cluster video is shown; both belong to
- * the hidden Audi map and are meaningless over the phone's map.
+ * scale bar), traffic provider logo ("TMC", "TMC PRO", online traffic) and
+ * satellite map provider logo ("Google", with Google Earth / satellite maps,
+ * bottom right) in the cockpit while the CarPlay cluster video is shown;
+ * they belong to the hidden Audi map and are meaningless over the phone's
+ * map.
  *
  * HandCodedMapWidgetFactory.createMapZoomGroupCombi builds the zoom group as
  * a layout container of three widgets, the label bound to model 403861
@@ -12,7 +14,9 @@
  * 2026-10-31). The logo is the icon bound to model 500137 that
  * createMapControllerCombi puts into the cockpit's MapControllerCombi; the
  * same factory method also builds one for the navigation sidebar on the MMI,
- * so only icons below a MapControllerCombi are touched. Both are found by
+ * so only icons below a MapControllerCombi are touched. The satellite map
+ * provider logo is the icon on model 4000022 (createSatelliteMapProviderLogoCombi,
+ * same MapControllerCombi; the MMI's own one is on 404796). Both are found by
  * walking the widget trees of the current screens of every terminal and
  * switched with setVisibleByDisclaimer, a visibility bit the stock HMI does
  * not use on these widgets; the enclosing subframe is then invalidated so
@@ -33,6 +37,7 @@ import java.util.Vector;
 final class ZoomScaleHider {
     private static final int MODEL_ZOOM_SCALE = 403861;
     private static final int MODEL_TRAFFIC_LOGO = 500137;
+    private static final int MODEL_SATELLITE_LOGO = 4000022;
     private static final int TERMINALS = 10;
     private static final long WALK_MS = 5000L;
 
@@ -81,7 +86,7 @@ final class ZoomScaleHider {
                 lastLogos = foundLogos.size();
                 lastOtherLogos = walked[1];
                 msg = "zoom scale: " + found.size() + " group(s) and " + foundLogos.size()
-                        + " traffic logo(s) found (" + walked[1] + " logo(s) outside the cockpit map left alone), "
+                        + " map logo(s) found (" + walked[1] + " logo(s) outside the cockpit map left alone), "
                         + walked[0] + " widgets walked, screens" + where;
             }
         }
@@ -106,7 +111,7 @@ final class ZoomScaleHider {
         }
         if (hide != lastHide) {
             lastHide = hide;
-            String state = "zoom scale and traffic logo " + (hide ? "hidden" : "shown") + " (" + groups.size()
+            String state = "zoom scale and map logos " + (hide ? "hidden" : "shown") + " (" + groups.size()
                     + " group(s), " + logos.size() + " icon(s))";
             msg = msg == null ? state : msg + "; " + state;
         }
@@ -157,7 +162,7 @@ final class ZoomScaleHider {
                 found.addElement(group);
             }
         }
-        if (w.getModelID() == MODEL_TRAFFIC_LOGO) {
+        if (w.getModelID() == MODEL_TRAFFIC_LOGO || w.getModelID() == MODEL_SATELLITE_LOGO) {
             if (!inCockpitMap(w)) {
                 ++walked[1];
             } else if (!foundLogos.contains(w)) {

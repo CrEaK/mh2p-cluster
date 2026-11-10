@@ -42,17 +42,20 @@ import de.audi.app.terminalmode.smartphone.carplay.CarPlayClusterIntegration;
  *   cockpit while the "Carplay Map" menu setting is on and the cockpit video
  *   runs, also while the MMI shows the radio or the reverse camera. The
  *   bridge only passes it the real owner for the log.
+ * - Without the hook nothing is forwarded: the cockpit keeps the Audi map
+ *   and the cluster daemon never mirrors the MMI screen (both MMI displays,
+ *   which is no use in the cockpit). Turn-by-turn data is not affected.
  *
  * Every other callback is a no-op. Java 1.4 source level.
  */
 public class CarPlayScreenBridge implements DSICarplayListener, ServiceTrackerCustomizer {
 
     private static final int AUDI_RESOURCE_MAIN_SCREEN = DSICarplay.RESOURCE_MAIN_SCREEN;
-    private static final int INTEGRATION_RESOURCE_MAIN_SCREEN = 1;
 
     private final CarPlayClusterIntegration integration;
     /* null without the altScreen hook: then the owner decides as before */
     private final CarPlayMapSwitch mapSwitch;
+    private boolean mirrorNoted;
     private IContext context;
 
     public CarPlayScreenBridge(CarPlayClusterIntegration integration) {
@@ -132,8 +135,9 @@ public class CarPlayScreenBridge implements DSICarplayListener, ServiceTrackerCu
                     if (resources[i].getResourceID() == AUDI_RESOURCE_MAIN_SCREEN) {
                         if (mapSwitch != null) {
                             mapSwitch.ownerChanged(resources[i].getOwner());
-                        } else {
-                            integration.onResourceChanged(INTEGRATION_RESOURCE_MAIN_SCREEN, resources[i].getOwner());
+                        } else if (!mirrorNoted) {
+                            mirrorNoted = true;
+                            log("DSI: no altScreen hook, CarPlay screen mirror in the cockpit is off");
                         }
                     }
                 }

@@ -28,6 +28,13 @@ the Audi map normally is. So far it has only been tested in an A6 C8. **Use at y
 4. **Do not delete or overwrite the card afterwards.** It holds the backups
    (`Mods/ClusterIntegration/Update/Backup`) that are needed to uninstall.
 
+## Update to a new version
+
+Do not uninstall first. Unzip the contents of the new zip onto the **same** card and let it
+replace existing files; do not delete `Mods/ClusterIntegration/Update/Backup` (the zip has no such
+folder, so it stays). Then insert the card as for the install. The installer sees what is already
+installed and only replaces what changed.
+
 ## Use
 
 - Connect the iPhone and open Google Maps or Apple Maps in CarPlay.

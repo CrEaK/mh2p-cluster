@@ -7,6 +7,8 @@
  */
 package de.audi.app.terminalmode.smartphone.androidauto2.nav;
 
+import java.lang.reflect.Field;
+
 import de.audi.app.terminalmode.smartphone.carplay.CarPlayClusterIntegration;
 
 /**
@@ -25,6 +27,15 @@ import de.audi.app.terminalmode.smartphone.carplay.CarPlayClusterIntegration;
  * as before. The real owner is only logged. Once a second, or at once when
  * the menu changes the setting.
  *
+ * Before every start it sets the integration's mirror settings to the hook's
+ * video (VIDEO_MODE, zoom 1, pan 0). The integration reads them from
+ * cluster_config.json, where a carConfig entry for the car's class (the
+ * Porsche entries, e.g. 5_3 "Cayenne E3", may match an Audi) or a
+ * cluster_config.json on a USB stick or SD card can say "fill": the daemon
+ * then mirrors the MMI screen instead of decoding the video, and zoom/pan
+ * crop the video. If the fields cannot be set, nothing is started: the
+ * cockpit keeps the Audi map rather than showing a mirror.
+ *
  * Java 1.4 source level. Never throws out of its methods.
  */
 public final class CarPlayMapSwitch implements Runnable {
@@ -33,6 +44,7 @@ public final class CarPlayMapSwitch implements Runnable {
     private static final int OWNER_MAINUNIT = 1;
     private static final int OWNER_DEVICE = 2;
     private static final long TICK_MS = 1000L;
+    static final String VIDEO_MODE = "fill capture=h264";
 
     private final CarPlayClusterIntegration integration;
     private volatile int owner;
@@ -40,6 +52,8 @@ public final class CarPlayMapSwitch implements Runnable {
     private boolean lastVideo;
     private boolean lastEnabled;
     private boolean first = true;
+    /* the mirror settings could not be set: never start (no screen mirror) */
+    private boolean videoModeFailed;
 
     private CarPlayMapSwitch(CarPlayClusterIntegration integration) {
         this.integration = integration;
@@ -95,7 +109,7 @@ public final class CarPlayMapSwitch implements Runnable {
             lastVideo = video;
             CarPlayMapSetting.fireMenu();
         }
-        boolean want = enabled && video;
+        boolean want = enabled && video && !videoModeFailed;
         if (first || want != applied || enabled != lastEnabled) {
             first = false;
             lastEnabled = enabled;
@@ -105,8 +119,49 @@ public final class CarPlayMapSwitch implements Runnable {
                     + " (setting " + (enabled ? "on" : "off") + ", cockpit video " + (video ? "running" : "stopped")
                     + ", MMI screen owner " + ownerName(owner) + ")");
             if (change) {
+                if (want && !forceVideoMode()) {
+                    videoModeFailed = true;
+                    applied = false;
+                    return;
+                }
                 integration.onResourceChanged(RESOURCE_MAIN_SCREEN, want ? OWNER_DEVICE : OWNER_MAINUNIT);
             }
+        }
+    }
+
+    /* true when the integration will start the video, never the mirror */
+    private boolean forceVideoMode() {
+        try {
+            Class c = integration.getClass();
+            Field mode = c.getDeclaredField("mirrorMode");
+            Field[] f = new Field[] {
+                c.getDeclaredField("mirrorZoomX"), c.getDeclaredField("mirrorZoomY"),
+                c.getDeclaredField("mirrorPanX"), c.getDeclaredField("mirrorPanY")
+            };
+            float[] want = new float[] { 1.0f, 1.0f, 0.0f, 0.0f };
+            mode.setAccessible(true);
+            Object before = mode.get(integration);
+            StringBuffer was = new StringBuffer();
+            if (!VIDEO_MODE.equals(before)) {
+                was.append(" mode=\"").append(before).append('"');
+                mode.set(integration, VIDEO_MODE);
+            }
+            for (int i = 0; i < f.length; ++i) {
+                f[i].setAccessible(true);
+                float v = f[i].getFloat(integration);
+                if (v != want[i]) {
+                    was.append(' ').append(f[i].getName()).append('=').append(v);
+                    f[i].setFloat(integration, want[i]);
+                }
+            }
+            if (was.length() > 0) {
+                CarPlayMapSetting.log("Carplay Map: config had" + was + ", using the cockpit video (" + VIDEO_MODE
+                        + ", no zoom or pan)");
+            }
+            return true;
+        } catch (Throwable t) {
+            CarPlayMapSetting.log("Carplay Map: cannot set the video mode, cockpit keeps the Audi map: " + t);
+            return false;
         }
     }
 

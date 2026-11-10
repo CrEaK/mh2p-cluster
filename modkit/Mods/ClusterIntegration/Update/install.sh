@@ -230,11 +230,18 @@ case "$OEM" in
         else
             print "$brand firmware $RELEASE_VERSION OK, installing..."
         fi
-        if [[ "$OEM" == "AU" ]]; then
+        if [[ "$OEM" == "AU" && "$SOFTWARE_VERSION" == 2711 && -e "$MOD_ROOT/enable_carplay_altscreen.txt" ]]; then
+            # The CarPlay cockpit map (altScreen) was built and tested on
+            # P2711 (A6 C8, EU and US units); the Porsche-window warning below
+            # is about the Android Auto hooks and only confused its users.
+            print "Audi P2711 with the CarPlay cockpit map: the build it was made and tested on (A6 C8, EU and US). Still a beta."
+        elif [[ "$OEM" == "AU" ]]; then
             print "Audi support is EXPERIMENTAL: the JAR and native hooks were built against Porsche PCM5."
             if [[ "$SOFTWARE_VERSION" != 28?? ]]; then
                 print "WARNING: Audi build $SOFTWARE_VERSION is outside the 28xx window the hooks were built against (P2873 is the closest known match). Run the diagnostic pass first."
             fi
+        fi
+        if [[ "$OEM" == "AU" ]]; then
             print "If Android Auto or CarPlay stop working: put uninstall.txt in Mods/ClusterIntegration/ and re-run the ModKit."
         fi
         ;;
@@ -770,7 +777,7 @@ if [[ $ALTSCREEN -eq 1 ]]; then
         note "override $CLUSTER_DIR/cluster_config.json mirror.mode=\"fill capture=h264\" (altscreen)"
         print "carplay altscreen: ON (altscreen.so in dio_manager, TCP 6031 opened at boot, mirror.mode \"fill capture=h264\")"
     else
-        print "carplay altscreen: WARN could not set mirror.mode in cluster_config.json; CarPlay shows the screen mirror instead of the map video"
+        print "carplay altscreen: WARN could not set mirror.mode in cluster_config.json; the JAR sets it before every start anyway"
     fi
     [[ -f "$CLUSTER_DIR/altscreen_off" ]] && print "carplay altscreen: WARN $CLUSTER_DIR/altscreen_off exists, the hook stays passive until it is deleted"
 else
