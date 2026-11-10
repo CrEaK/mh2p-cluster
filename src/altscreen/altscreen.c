@@ -26,6 +26,9 @@
  *                              /tmp/altscreen_rec exists)
  *   after the stream starts -> showUI (Maps cluster scene) and keyframes
  *                              addressed to the cluster display uuid
+ *   while the stream runs   -> libairplay's idle keep-alive timeout (30 s,
+ *                              select() interposed) is held off, because the
+ *                              phone's keep-alives travel inside stream 111
  *
  * The cockpit side is the installed cluster mod: when CarPlay owns the main
  * screen its Java part writes "start mode=<mirror.mode> ..." to
@@ -67,7 +70,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/select.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -685,6 +691,79 @@ typedef struct receiver {
 
 static receiver_t *g_rx;                /* current receiver, owned by its thread */
 
+/* ------------------------------------------- libairplay idle keep-alive */
+
+/*
+ * While no stream libairplay knows is set up (main screen 110, audio), its
+ * _IdleStateKeepAliveThread @0x321bc waits in select() with a 30 s timeout on
+ * the UDP keep-alive socket *(int *)(session+0x15ec) (port at +0x15f0, both
+ * filled by _IdleStateKeepAliveInitialize @0x385de) and its stop pipe
+ * (+0x15f4). Every datagram re-arms the wait; a timeout tears the session down
+ * ("Keep alive thread timeout (30 ms) expired!", kTimeoutErr; the log says ms,
+ * the value is seconds). With stream 111 running the iPhone is not idle and
+ * sends its keep-alives inside stream 111 instead (opcode 5,
+ * KeepAliveWithBody, about one per second), which libairplay never sees. So
+ * with the MMI on the radio and no CarPlay audio the session ended every
+ * 30 s and the phone reconnected (A6 C8, 2026-11-10).
+ *
+ * select() below passes every call straight through except exactly that one
+ * (readfds holding the keep-alive socket, no write/except sets, timeout 30.0
+ * s): when it times out while stream 111 delivered data in the last 30 s, it
+ * waits again until 30 s after that data. A phone that really goes away stops
+ * sending on 111 too, and the session ends as before, at most 30 s later.
+ */
+#define OFF_KA_SOCK   0x15ec
+#define OFF_KA_PORT   0x15f0
+#ifndef KA_TIMEOUT
+#define KA_TIMEOUT    30               /* s, as libairplay waits */
+#endif
+
+static volatile int g_ka_fd = -1;       /* keep-alive socket while 111 runs */
+static volatile long g_alt_seen;        /* CLOCK_MONOTONIC s of the last 111 data */
+static receiver_t *g_ka_owner;          /* under g_mtx */
+
+static long mono_sec(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long)ts.tv_sec;
+}
+
+static void ka_attach(receiver_t *rx) {
+    /* getsockopt lives in libsocket, which this library does not link:
+     * looked up in dio_manager's global scope, skipped if absent */
+    typedef int (*fn_getsockopt_t)(int, int, int, void *, socklen_t *);
+    fn_getsockopt_t gso = (fn_getsockopt_t)dlsym(RTLD_DEFAULT, "getsockopt");
+    const char *s = (const char *)rx->session;
+    int fd = *(const int *)(s + OFF_KA_SOCK);
+    int port = *(const int *)(s + OFF_KA_PORT);
+    int type = -1;
+    socklen_t len = sizeof(type);
+
+    if (gso && fd > 2 && gso(fd, SOL_SOCKET, SO_TYPE, &type, &len) != 0)
+        type = -2;
+    if (fd <= 2 || port <= 0 || port > 65535 || fcntl(fd, F_GETFD) == -1 ||
+        (gso && type != SOCK_DGRAM)) {
+        plog("keep-alive: no idle socket at session+0x%x (fd %d port %d type %d), not held",
+             OFF_KA_SOCK, fd, port, type);
+        return;
+    }
+    pthread_mutex_lock(&g_mtx);
+    g_alt_seen = mono_sec();
+    g_ka_owner = rx;
+    g_ka_fd = fd;
+    pthread_mutex_unlock(&g_mtx);
+    plog("keep-alive: libairplay idle socket fd %d port %d, held while stream 111 runs", fd, port);
+}
+
+static void ka_detach(receiver_t *rx) {
+    pthread_mutex_lock(&g_mtx);
+    if (g_ka_owner == rx) {
+        g_ka_owner = NULL;
+        g_ka_fd = -1;
+    }
+    pthread_mutex_unlock(&g_mtx);
+}
+
 /* ------------------------------------------------- ring to cluster daemon */
 
 /* Layout and name of mh2p-cluster's src/cluster_h264_shm.h. The daemon's
@@ -1081,6 +1160,7 @@ static void receive(receiver_t *rx, int fd) {
             plog("stream ended (stop=%d errno=%d)", rx->stop, errno);
             break;
         }
+        g_alt_seen = mono_sec();              /* the phone is alive (keep-alive) */
         size = (uint32_t)hdr[0] | ((uint32_t)hdr[1] << 8) | ((uint32_t)hdr[2] << 16) |
                ((uint32_t)hdr[3] << 24);
         op = hdr[4];
@@ -1218,7 +1298,9 @@ static void *rx_main(void *arg) {
         if (fl >= 0) fcntl(fd, F_SETFL, fl | O_NONBLOCK);
         if (rx->session) cmd_ok = (pthread_create(&cmd, NULL, cmd_main, rx) == 0);
         if (!cmd_ok) plog("no command thread (session %p): no showUI, no keyframes", rx->session);
+        if (rx->session) ka_attach(rx);
         receive(rx, fd);
+        ka_detach(rx);
         close(fd);
         rx->done = 1;
         if (cmd_ok) pthread_join(cmd, NULL);
@@ -1423,6 +1505,44 @@ int AirPlayReceiverSessionSetup(void *session, void *req, void **outResp, void *
     }
     plog_obj("  response", resp);
     return ret;
+}
+
+typedef int (*fn_select_t)(int, fd_set *, fd_set *, fd_set *, struct timeval *);
+
+/* See "libairplay idle keep-alive" above. Every other call passes through. */
+int select(int nfds, fd_set *rd, fd_set *wr, fd_set *ex, struct timeval *tv) {
+    static fn_select_t real;
+    unsigned char save[128];
+    size_t n;
+    struct timeval t;
+    long left;
+    int fd = g_ka_fd, r, held = 0;
+
+    if (!real) real = (fn_select_t)dlsym(RTLD_NEXT, "select");
+    if (!real) { errno = ENOSYS; return -1; }
+    if (fd < 0 || !tv || tv->tv_sec != KA_TIMEOUT || tv->tv_usec != 0 || !rd || wr || ex ||
+        fd >= nfds || !FD_ISSET(fd, rd))
+        return real(nfds, rd, wr, ex, tv);
+    n = ((size_t)nfds + 31) / 32 * 4;     /* whole 32-bit words, as select uses */
+    if (n > sizeof(save)) return real(nfds, rd, wr, ex, tv);
+    memcpy(save, rd, n);
+    t = *tv;
+    for (;;) {
+        r = real(nfds, rd, NULL, NULL, &t);
+        if (r != 0) return r;
+        left = g_alt_seen + KA_TIMEOUT - mono_sec();
+        if (g_ka_fd != fd || left <= 0) {
+            if (held) plog("keep-alive: stream 111 silent for %d s too, libairplay's timeout goes ahead", KA_TIMEOUT);
+            return 0;
+        }
+        if (!held++) {
+            plog("keep-alive: libairplay idle timeout held off, stream 111 alive (next check in %ld s)", left);
+            slog("111: idle keep-alive held by stream 111");
+        }
+        memcpy(rd, save, n);
+        t.tv_sec = left;
+        t.tv_usec = 0;
+    }
 }
 
 typedef int (*fn_teardown_t)(void *, void *, int, void *);
