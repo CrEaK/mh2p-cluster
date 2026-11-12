@@ -551,7 +551,8 @@ static int add_common(void *d, int night) {
 
 /* Cluster geometry, overridable without a rebuild: /tmp/altscreen.conf, else
  * cluster/altscreen.conf, lines "key=a,b,..." (phys=W,H in mm;
- * large=x,y,w,h and small=x,y,w,h safe areas; zoom_invert=0/1, default 1).
+ * large=x,y,w,h and small=x,y,w,h safe areas; zoom_invert=0/1, default 1;
+ * zoom_restore=0/1, default 1, and zoom_max=N, default 10, see ZOOM_SAVE).
  *
  * Safe rectangles from the calibration pattern (cluster capture=test,
  * photographed in both cockpit views, 0.725 photo px per stream px):
@@ -569,6 +570,7 @@ static struct {
     int phys_w, phys_h;
     int area[2][4];                     /* 0 = large map view, 1 = big gauges */
     int zoom_invert;
+    int zoom_restore, zoom_max;
 } g_conf;
 
 static void parse_ints(const char *v, int *out, int n) {
@@ -587,6 +589,8 @@ static void load_conf(void) {
     g_conf.area[0][0] = 500; g_conf.area[0][1] = 155; g_conf.area[0][2] = 940; g_conf.area[0][3] = 410;
     g_conf.area[1][0] = 624; g_conf.area[1][1] = 158; g_conf.area[1][2] = 672; g_conf.area[1][3] = 400;
     g_conf.zoom_invert = 1;             /* A6 C8: positive roller steps zoom out */
+    g_conf.zoom_restore = 1;
+    g_conf.zoom_max = 10;
     f = fopen(CONF_TMP, "r");
     if (!f) f = fopen(CONF_PATH, "r");
     if (f) {
@@ -598,13 +602,19 @@ static void load_conf(void) {
             else if (!strcmp(line, "large")) parse_ints(eq + 1, g_conf.area[0], 4);
             else if (!strcmp(line, "small")) parse_ints(eq + 1, g_conf.area[1], 4);
             else if (!strcmp(line, "zoom_invert")) g_conf.zoom_invert = atoi(eq + 1);
+            else if (!strcmp(line, "zoom_restore")) g_conf.zoom_restore = atoi(eq + 1);
+            else if (!strcmp(line, "zoom_max")) g_conf.zoom_max = atoi(eq + 1);
         }
         fclose(f);
     }
-    plog("conf: phys %dx%d mm, large %d,%d %dx%d, small %d,%d %dx%d, zoom_invert %d%s",
+    if (g_conf.zoom_max < 1) g_conf.zoom_max = 1;
+    if (g_conf.zoom_max > 30) g_conf.zoom_max = 30;
+    plog("conf: phys %dx%d mm, large %d,%d %dx%d, small %d,%d %dx%d, zoom_invert %d, "
+         "zoom_restore %d, zoom_max %d%s",
          g_conf.phys_w, g_conf.phys_h, g_conf.area[0][0], g_conf.area[0][1], g_conf.area[0][2],
          g_conf.area[0][3], g_conf.area[1][0], g_conf.area[1][1], g_conf.area[1][2],
-         g_conf.area[1][3], g_conf.zoom_invert, f ? "" : " (defaults)");
+         g_conf.area[1][3], g_conf.zoom_invert, g_conf.zoom_restore, g_conf.zoom_max,
+         f ? "" : " (defaults)");
 }
 
 /* Cockpit view as the mod's IMapClusterServiceWrapper last reported it:
@@ -677,6 +687,8 @@ static void *build_main(const void *stock, int night) {
 
 static pthread_mutex_t g_mtx = PTHREAD_MUTEX_INITIALIZER;
 static void *g_ctrl_session;            /* session whose control SETUP got altScreen */
+static int g_session_gen;               /* counts those control SETUPs */
+static int g_zoom_gen;                  /* session whose saved zoom was restored */
 
 typedef struct receiver {
     void *session;                      /* retained (CFRetain) or NULL */
@@ -909,6 +921,46 @@ static int take_zoom_steps(long *pos) {
     return sum;
 }
 
+/* The map zoom lives on the iPhone and is only ever moved in relative steps;
+ * the phone never reports the level back, and every new session starts at the
+ * app's default. So the hook counts the steps it sent (in roller direction,
+ * before zoom_invert) and keeps the net count across restarts: next to the
+ * session log, written 3 s after the last step. The count stops at +-zoom_max,
+ * so turning the roller past the app's own limit does not drift it far. When
+ * the first stream of the next CarPlay session runs, the same steps are sent
+ * again (zoom_restore=0 off); a later stream of the same session continues
+ * from the saved count without sending them, so they never add up twice.
+ * The replay waits until the app's map is up and spaces the steps like a
+ * roller turned by hand: in the car, a burst of steps 50 ms apart, 2 s after
+ * video start, left the map more zoomed in than it was saved. */
+#define ZOOM_SAVE     "/mnt/ota/modkit/altscreen_zoom.txt"
+#define ZOOM_SAVE_TMP ZOOM_SAVE ".tmp"
+#define ZOOM_RESTORE_DELAY_MS 6000      /* after the first frames */
+#define ZOOM_RESTORE_GAP_MS   600       /* between two replayed steps */
+
+static int zoom_load(void) {
+    char line[32];
+    int v = 0;
+    FILE *f = fopen(ZOOM_SAVE, "r");
+    if (!f) return 0;
+    if (fgets(line, sizeof(line), f)) v = atoi(line);
+    fclose(f);
+    if (v > g_conf.zoom_max) v = g_conf.zoom_max;
+    if (v < -g_conf.zoom_max) v = -g_conf.zoom_max;
+    return v;
+}
+
+static void zoom_store(int v) {
+    FILE *f = fopen(ZOOM_SAVE_TMP, "w");
+    if (!f) { plog("zoom: %s not writable (errno %d)", ZOOM_SAVE_TMP, errno); return; }
+    fprintf(f, "%d\n", v);
+    if (fclose(f) != 0 || rename(ZOOM_SAVE_TMP, ZOOM_SAVE) != 0) {
+        plog("zoom: saving %d failed (errno %d)", v, errno);
+        return;
+    }
+    plog("zoom: net %d step(s) saved", v);
+}
+
 
 static int ctl_stamp(long *mtime, long *size) {
     struct stat st;
@@ -930,6 +982,7 @@ static void *cmd_main(void *arg) {
     long mt = 0, sz = 0, nmt, nsz;
     int have_ctl, tick = 0, kf1 = -1, kf2 = -1, last_kf = 0, ui_sent = 0;
     int view = -1, zoom = 0, steps;
+    int net = 0, saved_net = 0, restore = 0, restore_at = -1, zoom_tick = -1, lim;
     long zoom_pos = -1;
 
     have_ctl = (ctl_stamp(&mt, &sz) == 0);
@@ -945,7 +998,33 @@ static void *cmd_main(void *arg) {
             send_cmd(rx->session, "forceKeyFrame", NULL);
             ui_sent = 1;
             last_kf = tick;
+            if (g_conf.zoom_restore) {
+                int first;
+                pthread_mutex_lock(&g_mtx);
+                first = (g_zoom_gen != g_session_gen);
+                g_zoom_gen = g_session_gen;
+                pthread_mutex_unlock(&g_mtx);
+                saved_net = zoom_load();
+                if (!first) {
+                    net = saved_net;    /* another 111 stream of the same CarPlay session */
+                    plog("zoom: same session, %d saved step(s) not sent again", saved_net);
+                } else if (saved_net) {
+                    restore = saved_net;
+                    restore_at = tick + TICKS(ZOOM_RESTORE_DELAY_MS);   /* once the scene is up */
+                }
+            }
             continue;
+        }
+        lim = g_conf.zoom_max > 10 ? g_conf.zoom_max : 10;
+        if (restore_at >= 0 && tick >= restore_at) {
+            int s = restore > 0 ? 1 : -1;
+            if (restore == saved_net) plog("zoom: restoring %d saved step(s)", restore);
+            zoom += s;
+            if (zoom > lim) zoom = lim;
+            if (zoom < -lim) zoom = -lim;
+            restore -= s;
+            restore_at = restore ? tick + TICKS(ZOOM_RESTORE_GAP_MS) : -1;
+            if (!restore) slog("zoom: %d saved step(s) restored", saved_net);
         }
         /* cockpit view -> view area */
         if (tick % TICKS(250) == 0) {
@@ -961,15 +1040,24 @@ static void *cmd_main(void *arg) {
         if (steps) {
             plog("zoom: %d step(s) from the wheel", steps);
             zoom += steps;
-            if (zoom > 10) zoom = 10;
-            if (zoom < -10) zoom = -10;
+            if (zoom > lim) zoom = lim;
+            if (zoom < -lim) zoom = -lim;
         }
         if (zoom) {
             int dir = zoom > 0 ? 1 : 0;
+            int s = zoom > 0 ? 1 : -1;
             if (g_conf.zoom_invert) dir = !dir;
-            send_cmd_int(rx->session, "changeMapZoomLevel", NULL, "zoomDirection", dir, 1);
-            zoom += zoom > 0 ? -1 : 1;
+            if (send_cmd_int(rx->session, "changeMapZoomLevel", NULL, "zoomDirection", dir, 1) == 0 &&
+                net + s <= g_conf.zoom_max && net + s >= -g_conf.zoom_max)
+                net += s;
+            zoom -= s;
+            zoom_tick = tick;
             continue;
+        }
+        if (g_conf.zoom_restore && restore_at < 0 && zoom_tick >= 0 && net != saved_net &&
+            tick - zoom_tick >= TICKS(3000)) {
+            zoom_store(net);
+            saved_net = net;
         }
         if (tick % TICKS(250) != 0) continue;
         if (ctl_stamp(&nmt, &nsz) == 0) {
@@ -989,6 +1077,8 @@ static void *cmd_main(void *arg) {
             last_kf = tick;
         }
     }
+    if (g_conf.zoom_restore && restore_at < 0 && zoom_tick >= 0 && net != saved_net)
+        zoom_store(net);
     plog("command thread finished");
     return NULL;
 }
@@ -1489,6 +1579,7 @@ int AirPlayReceiverSessionSetup(void *session, void *req, void **outResp, void *
             if (enabled && !set_val(resp, "enabledFeatures", enabled)) {
                 pthread_mutex_lock(&g_mtx);
                 g_ctrl_session = session;
+                g_session_gen++;
                 pthread_mutex_unlock(&g_mtx);
                 plog("control SETUP: enabledFeatures altScreen + viewAreas");
                 slog("CarPlay session start (altScreen offered)");
