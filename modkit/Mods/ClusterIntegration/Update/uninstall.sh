@@ -84,6 +84,11 @@ if [[ -f /mnt/ota/modkit/carplay_map.txt ]]; then
     mount -uw /mnt/ota 2>/dev/null
     rm -f /mnt/ota/modkit/carplay_map.txt && print "remove:            /mnt/ota/modkit/carplay_map.txt"
 fi
+# The CarPlay map zoom the altScreen hook keeps across restarts (zoom_restore).
+if [[ -f /mnt/ota/modkit/altscreen_zoom.txt ]]; then
+    mount -uw /mnt/ota 2>/dev/null
+    rm -f /mnt/ota/modkit/altscreen_zoom.txt && print "remove:            /mnt/ota/modkit/altscreen_zoom.txt"
+fi
 print ""
 
 # Reverse of swap_binary_for_wrapper. If NAME.real exists, remove the
