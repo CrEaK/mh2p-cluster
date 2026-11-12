@@ -929,9 +929,14 @@ static int take_zoom_steps(long *pos) {
  * so turning the roller past the app's own limit does not drift it far. When
  * the first stream of the next CarPlay session runs, the same steps are sent
  * again (zoom_restore=0 off); a later stream of the same session continues
- * from the saved count without sending them, so they never add up twice. */
+ * from the saved count without sending them, so they never add up twice.
+ * The replay waits until the app's map is up and spaces the steps like a
+ * roller turned by hand: in the car, a burst of steps 50 ms apart, 2 s after
+ * video start, left the map more zoomed in than it was saved. */
 #define ZOOM_SAVE     "/mnt/ota/modkit/altscreen_zoom.txt"
 #define ZOOM_SAVE_TMP ZOOM_SAVE ".tmp"
+#define ZOOM_RESTORE_DELAY_MS 6000      /* after the first frames */
+#define ZOOM_RESTORE_GAP_MS   600       /* between two replayed steps */
 
 static int zoom_load(void) {
     char line[32];
@@ -1005,19 +1010,21 @@ static void *cmd_main(void *arg) {
                     plog("zoom: same session, %d saved step(s) not sent again", saved_net);
                 } else if (saved_net) {
                     restore = saved_net;
-                    restore_at = tick + TICKS(2000);            /* once the scene is up */
+                    restore_at = tick + TICKS(ZOOM_RESTORE_DELAY_MS);   /* once the scene is up */
                 }
             }
             continue;
         }
         lim = g_conf.zoom_max > 10 ? g_conf.zoom_max : 10;
         if (restore_at >= 0 && tick >= restore_at) {
-            plog("zoom: restoring %d saved step(s)", restore);
-            slog("zoom: %d saved step(s) restored", restore);
-            zoom += restore;
+            int s = restore > 0 ? 1 : -1;
+            if (restore == saved_net) plog("zoom: restoring %d saved step(s)", restore);
+            zoom += s;
             if (zoom > lim) zoom = lim;
             if (zoom < -lim) zoom = -lim;
-            restore_at = -1;
+            restore -= s;
+            restore_at = restore ? tick + TICKS(ZOOM_RESTORE_GAP_MS) : -1;
+            if (!restore) slog("zoom: %d saved step(s) restored", saved_net);
         }
         /* cockpit view -> view area */
         if (tick % TICKS(250) == 0) {
