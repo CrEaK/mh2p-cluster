@@ -68,7 +68,7 @@ import java.lang.reflect.Method;
  */
 public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
 
-    public static final String BUILD = "kombi-guard 2026-11-09d (AA + CarPlay, displayable 62, view size, video check, zoom scale, traffic and satellite logo, Carplay Map menu, no screen mirror, dm watchdog, normal priority)";
+    public static final String BUILD = "kombi-guard 2026-11-14b (AA + CarPlay, displayable 62, view size, video check, zoom scale, traffic and satellite logo, Smartphone Map menu for CarPlay and AA, no screen mirror, dm watchdog, normal priority)";
 
     private static final String MAP_CLUSTER_CLASS = "de.audi.tghu.navi.app.cluster.IMapClusterService";
     private static final int CL_RENDERING = 2;
@@ -107,6 +107,8 @@ public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
     private boolean altVideo = false;
     private boolean lastCpRendering = false;
     private boolean lastCpVideo = false;
+    private boolean lastAaRendering = false;
+    private boolean lastAaWanted = false;
     private static final String VIEW_SIZE_CLASS = "de.audi.atip.mmicombi.IViewSizeManager";
     private IViewSizeManager viewSizeManager;
     private long viewSizeLookup = 0L;
@@ -214,7 +216,21 @@ public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
             lastCpRendering = cpRendering;
             lastCpVideo = cpVideo;
         }
-        boolean rendering = aaRendering || cpVideo;
+        /* Android Auto: the "Smartphone Map" checkbox of the cockpit menu
+         * applies here as well. Off, the daemon keeps decoding, but the
+         * cockpit stays on (or returns to) the native map context. */
+        boolean aaWanted = aaRendering && CarPlayMapSetting.isEnabled();
+        if (aaRendering != lastAaRendering || aaWanted != lastAaWanted) {
+            if (aaRendering != lastAaRendering) {
+                CarPlayMapSetting.setAaVideo(aaRendering);
+            }
+            if (aaRendering && !aaWanted) {
+                log("AA video rendering, Smartphone Map off - native map stays");
+            }
+            lastAaRendering = aaRendering;
+            lastAaWanted = aaWanted;
+        }
+        boolean rendering = aaWanted || cpVideo;
         String zoomScale = DisplayManagerMIB2High.refreshZoomScale();
         if (zoomScale != null) {
             log(zoomScale);

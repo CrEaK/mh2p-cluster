@@ -25,7 +25,11 @@ import de.audi.app.terminalmode.smartphone.carplay.CarPlayClusterIntegration;
  *   survives a restart; /mnt/app is read-only for the HMI, /mnt/ota is where
  *   the hook keeps its session log as well.
  * - connected: the altScreen hook holds VIDEO_FLAG while the cockpit video
- *   of a CarPlay session runs. The menu row is only shown then.
+ *   of a CarPlay session runs.
+ * - Android Auto video: KombiMapGuard reports while Android Auto renders its
+ *   cluster map (setAaVideo). The same checkbox applies there: off, the
+ *   guard leaves the Audi map in the cockpit. The menu row is shown while
+ *   either phone sends a cockpit video (isMenuVisible).
  * - altscreen mode: the hook is installed and not switched off. Without it
  *   the CarPlay cockpit picture is the screen mirror, which only makes sense
  *   while CarPlay owns the MMI screen, so the old owner-driven path stays.
@@ -42,6 +46,7 @@ public final class CarPlayMapSetting {
     private static boolean loaded;
     private static boolean enabled = true;
     private static volatile Runnable menuListener;
+    private static volatile boolean aaVideo;
     private static volatile CarPlayClusterIntegration logTarget;
 
     private CarPlayMapSetting() {
@@ -56,6 +61,20 @@ public final class CarPlayMapSetting {
     /** true while the cockpit video of a CarPlay session runs. */
     public static boolean isConnected() {
         return new File(VIDEO_FLAG).exists();
+    }
+
+    /** true while Android Auto renders its cluster map (KombiMapGuard). */
+    static void setAaVideo(boolean on) {
+        if (aaVideo == on) {
+            return;
+        }
+        aaVideo = on;
+        fireMenu();
+    }
+
+    /** The menu row is shown while CarPlay or Android Auto sends a cockpit video. */
+    public static boolean isMenuVisible() {
+        return aaVideo || isConnected();
     }
 
     public static boolean isEnabled() {
