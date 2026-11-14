@@ -33,7 +33,8 @@ res("forceRHD true (comment stripped)", new["config"]["forceRHD"] is True)
 res("imperialSmallUnit yards (CRLF stripped)", new["config"]["imperialSmallUnit"]=="yards")
 res("logFileSize 25", new["config"]["logFileSize"]==25)
 res("heartbeatInterval unchanged (bad value)", new["config"]["heartbeatInterval"]==old["config"]["heartbeatInterval"])
-res("nested mirror/gal_h264 untouched", new["config"]["mirror"]==old["config"]["mirror"] and new["config"]["gal_h264"]==old["config"]["gal_h264"])
+g=dict(old["config"]["gal_h264"]); g.update({"codecRes":1080,"mode":"fill","panY":0.0})
+res("nested mirror untouched, gal_h264 = shipped + Audi defaults (1080, fill, panY 0)", new["config"]["mirror"]==old["config"]["mirror"] and new["config"]["gal_h264"]==g)
 res("dynamicThresholds untouched", new["dynamicThresholds"]==old["dynamicThresholds"])
 res("countries untouched", new["countries"]==old["countries"])
 res("carConfig untouched", new["carConfig"]==old["carConfig"])
@@ -66,7 +67,8 @@ new=json.load(open(sys.argv[1])); old=json.load(open(sys.argv[2],encoding='utf-8
 def res(n,c): print(("PASS " if c else "FAIL ")+n)
 m=dict(old["config"]["mirror"]); m["mode"]="fill capture=h264"
 res("altscreen: config mirror.mode = fill capture=h264, rest of mirror kept", new["config"]["mirror"]==m)
-res("altscreen: gal_h264 and carConfig untouched", new["config"]["gal_h264"]==old["config"]["gal_h264"] and new["carConfig"]==old["carConfig"])
+g=dict(old["config"]["gal_h264"]); g.update({"codecRes":1080,"mode":"fill","panY":0.0})
+res("altscreen: gal_h264 = shipped + Audi defaults, carConfig untouched", new["config"]["gal_h264"]==g and new["carConfig"]==old["carConfig"])
 PY
 printf '#!/bin/sh\necho "PRELOAD=$LD_PRELOAD"\n' > /mnt/app/eso/bin/apps/dio_manager.real; chmod 755 /mnt/app/eso/bin/apps/dio_manager.real
 mksh /mnt/app/eso/bin/apps/dio_manager 2>/dev/null | grep -q "PRELOAD=$AC/altscreen.so$" && res "altscreen: wrapper preloads altscreen.so" PASS || res "altscreen: wrapper preloads altscreen.so" FAIL

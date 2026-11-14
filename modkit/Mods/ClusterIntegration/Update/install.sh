@@ -791,6 +791,24 @@ else
     [[ "$OEM" == "AU" ]] && print "carplay altscreen: OFF (create Mods/ClusterIntegration/enable_carplay_altscreen.txt for the CarPlay map video in the cockpit)"
 fi
 
+# Audi defaults for the Android Auto map video. The cluster entry built into
+# gal_cluster.so (modkit/template/template.txt) lays the phone's UI out for a
+# 1920x1080 frame of which the cockpit shows the centre rows, so the daemon
+# has to fill and the hook has to ask the phone for 1080 (gal env below).
+# With the shipped 720 / letter the map is a band with black bars and a hard
+# right edge (seen on an A6 C8; an e-tron owner had set these by hand).
+# config_overrides.txt is applied after this and wins.
+if [[ "$OEM" == "AU" ]]; then
+    for kv in 'gal_h264.codecRes=1080' 'gal_h264.mode="fill"' 'gal_h264.panY=0.0'; do
+        if apply_override "${kv%%=*}" "${kv#*=}"; then
+            print "audi default:      ${kv%%=*} = ${kv#*=}"
+            note "override $CLUSTER_DIR/cluster_config.json $kv (audi default)"
+        else
+            print "audi default:      WARN could not set ${kv%%=*} in cluster_config.json"
+        fi
+    done
+fi
+
 # Per-car config overrides. Mods/ClusterIntegration/config_overrides.txt on
 # the SD card holds "key=value" lines (value written as JSON: true, false,
 # a number, or "a string"; '#' starts a comment). Each key is applied with
@@ -837,30 +855,41 @@ fi
 # on the SD card holds GAL_CLUSTER_*=value lines (insets in codec-frame
 # pixels, GAL_CLUSTER_LOG=1 for live logging, ...); the installer copies the
 # valid lines to $CLUSTER_DIR/gal_env and the gal wrapper exports them before
-# starting gal.real. Without the file an installed gal_env is removed.
+# starting gal.real. On Audi GAL_CLUSTER_RES=1080 is added unless the file
+# sets GAL_CLUSTER_RES itself (it goes with the gal_h264 defaults above).
+# With nothing to install an installed gal_env is removed.
 GAL_ENV_SRC="$MOD_ROOT/gal_env.txt"
 GAL_ENV_DST="$CLUSTER_DIR/gal_env"
+GAL_ENV_STAGE="/tmp/cluster_gal_env.$$"
+rm -f "$GAL_ENV_STAGE"
 if [[ -f "$GAL_ENV_SRC" ]]; then
     awk '{ sub(/\r$/, ""); sub(/[ \t]*#.*$/, ""); gsub(/^[ \t]+|[ \t]+$/, "") }
          /^GAL_CLUSTER_[A-Z0-9_]+=[A-Za-z0-9_.:\/-]*$/ { print; n++ }
-         END { exit (n > 0 ? 0 : 1) }' "$GAL_ENV_SRC" > "/tmp/cluster_gal_env.$$" 2>/dev/null
-    if [[ -s "/tmp/cluster_gal_env.$$" ]]; then
-        # the staged file is new every run, so compare by content, not time
-        files_same "/tmp/cluster_gal_env.$$" "$GAL_ENV_DST"
-        if [[ $? -eq 0 ]]; then
-            print "skip identical:    $GAL_ENV_DST"
-        else
-            install_file "/tmp/cluster_gal_env.$$" "$GAL_ENV_DST" && chmod 644 "$GAL_ENV_DST" 2>/dev/null
-        fi
-        awk '{ printf "gal env:           %s\n", $0 }' "$GAL_ENV_DST"
-    else
-        print "gal env:           WARN gal_env.txt has no valid GAL_CLUSTER_NAME=value line, ignored"
+         END { exit (n > 0 ? 0 : 1) }' "$GAL_ENV_SRC" > "$GAL_ENV_STAGE" 2>/dev/null
+    [[ -s "$GAL_ENV_STAGE" ]] || print "gal env:           WARN gal_env.txt has no valid GAL_CLUSTER_NAME=value line, ignored"
+fi
+if [[ "$OEM" == "AU" ]]; then
+    galres=0
+    [[ -s "$GAL_ENV_STAGE" ]] && awk '/^GAL_CLUSTER_RES=/ { f = 1 } END { exit (f ? 0 : 1) }' "$GAL_ENV_STAGE" && galres=1
+    if [[ $galres -eq 0 ]]; then
+        print "GAL_CLUSTER_RES=1080" >> "$GAL_ENV_STAGE"
+        print "audi default:      GAL_CLUSTER_RES=1080 (gal env)"
     fi
-    rm -f "/tmp/cluster_gal_env.$$"
+fi
+if [[ -s "$GAL_ENV_STAGE" ]]; then
+    # the staged file is new every run, so compare by content, not time
+    files_same "$GAL_ENV_STAGE" "$GAL_ENV_DST"
+    if [[ $? -eq 0 ]]; then
+        print "skip identical:    $GAL_ENV_DST"
+    else
+        install_file "$GAL_ENV_STAGE" "$GAL_ENV_DST" && chmod 644 "$GAL_ENV_DST" 2>/dev/null
+    fi
+    awk '{ printf "gal env:           %s\n", $0 }' "$GAL_ENV_DST"
 elif [[ -f "$GAL_ENV_DST" ]]; then
     bk="$BACKUP_DIR/gal_env.backup.$(ts)"
     cp -p "$GAL_ENV_DST" "$bk" && rm -f "$GAL_ENV_DST" && print "remove gal env:    $GAL_ENV_DST -> $bk" && note "remove $GAL_ENV_DST backup=$bk"
 fi
+rm -f "$GAL_ENV_STAGE"
 
 # Daemon log. Mods/ClusterIntegration/daemon_log.txt on the card installs the
 # marker $CLUSTER_DIR/daemon_verbose; the Persist script and the gal wrapper

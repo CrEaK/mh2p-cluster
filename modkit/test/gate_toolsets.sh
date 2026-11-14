@@ -90,6 +90,7 @@ echo "$out" | grep -q 'stand-in class:    ON (presence of StorageMountHandler co
 echo "=== G: Porsche never gets the stub"
 setup MH2p_US_PO416_P2870 aa aa ""; out=$(run)
 [[ ! -f $STUB ]] && ! echo "$out" | grep -q 'stand-in class:' && res "G Porsche: no stub line, no stub" PASS || res "G Porsche no stub" FAIL
+! echo "$out" | grep -q 'audi default' && [[ ! -f /mnt/app/eso/bin/apps/cluster/gal_env ]] && grep -q '"gal_h264": { "codecRes": 720,  "mode": "letter"' /mnt/app/eso/bin/apps/cluster/cluster_config.json && res "G Porsche: no Audi defaults (gal_h264 as shipped, no gal_env)" PASS || res "G Porsche: no Audi defaults" FAIL
 echo "$out" | grep -q 'WARNING: StorageMountHandler not found in this Porsche' && res "G Porsche warning when SM missing (search worked)" PASS || res "G Porsche warning (or skipped)" "n/a"
 echo "=== H: backup verification path"
 setup MH2p_ER_AUG35_P2873 aa aa ""; run >/dev/null; printf 'changed\n' > "$MOD_PATH/aa_only/cluster"; out=$(run)
@@ -117,13 +118,17 @@ PY
 echo "$out" | grep -q "config override:   WARN 'config.bad'" && res "I unknown block.key ignored" PASS || res "I unknown block.key ignored" FAIL
 echo "$out" | grep -q "WARN 'gal_h264.nested' value" && res "I non-scalar value rejected" PASS || res "I non-scalar value rejected" FAIL
 GE=/mnt/app/eso/bin/apps/cluster/gal_env
-[[ "$(cat $GE)" == $'GAL_CLUSTER_INSET_TOP=180\nGAL_CLUSTER_INSET_BOTTOM=180\nGAL_CLUSTER_LOG=1' ]] && res "I gal_env holds only valid lines (CR/comments/PATH/spaces dropped)" PASS || { res "I gal_env content" FAIL; cat $GE; }
+[[ "$(cat $GE)" == $'GAL_CLUSTER_INSET_TOP=180\nGAL_CLUSTER_INSET_BOTTOM=180\nGAL_CLUSTER_LOG=1\nGAL_CLUSTER_RES=1080' ]] && res "I gal_env holds only valid lines (CR/comments/PATH/spaces dropped) plus the Audi default" PASS || { res "I gal_env content" FAIL; cat $GE; }
+echo "$out" | grep -q 'audi default:      GAL_CLUSTER_RES=1080 (gal env)' && res "I Audi default GAL_CLUSTER_RES logged" PASS || res "I Audi default GAL_CLUSTER_RES logged" FAIL
+echo "$out" | grep -q 'audi default:      gal_h264.panY = 0.0' && res "I Audi gal_h264 defaults logged (overrides applied after them)" PASS || res "I Audi gal_h264 defaults logged" FAIL
 grep -q "add $GE" "$MOD_PATH/Backup/manifest.txt" && res "I gal_env recorded as add" PASS || res "I gal_env recorded as add" FAIL
 printf '#!/bin/sh\necho "TOP=$GAL_CLUSTER_INSET_TOP LOG=$GAL_CLUSTER_LOG MERGE=${GAL_CLUSTER_MERGE:-unset}"\n' > /mnt/app/eso/bin/apps/gal.real; chmod 755 /mnt/app/eso/bin/apps/gal.real
 mksh /mnt/app/eso/bin/apps/gal 2>/dev/null | grep -q 'TOP=180 LOG=1 MERGE=unset' && res "I wrapper exports gal_env (live mode)" PASS || res "I wrapper exports gal_env" FAIL
 grep -q 'gal env: GAL_CLUSTER_LOG=1' /tmp/gal_preload.log && res "I wrapper logs the env lines" PASS || res "I wrapper logs env" FAIL
 rm -f "$SCR/fakesd/Mods/ClusterIntegration/gal_env.txt"; out=$(run)
-[[ ! -f $GE ]] && echo "$out" | grep -q 'remove gal env:' && res "I gal_env removed when gal_env.txt is gone" PASS || res "I gal_env removed" FAIL
+[[ "$(cat $GE 2>/dev/null)" == 'GAL_CLUSTER_RES=1080' ]] && ! echo "$out" | grep -q 'remove gal env:' && res "I gal_env holds only the Audi default when gal_env.txt is gone" PASS || { res "I gal_env without gal_env.txt" FAIL; cat $GE; }
+printf 'GAL_CLUSTER_RES=720\n' > "$SCR/fakesd/Mods/ClusterIntegration/gal_env.txt"; out=$(run)
+[[ "$(cat $GE)" == 'GAL_CLUSTER_RES=720' ]] && ! echo "$out" | grep -q 'audi default:      GAL_CLUSTER_RES' && res "I GAL_CLUSTER_RES from gal_env.txt wins over the Audi default" PASS || { res "I GAL_CLUSTER_RES from gal_env.txt wins" FAIL; cat $GE; }
 printf 'GAL_CLUSTER_LOG=1\n' > "$SCR/fakesd/Mods/ClusterIntegration/gal_env.txt"; run >/dev/null; "$M" "$MOD_PATH/uninstall.sh" >/dev/null 2>&1
 [[ ! -f $GE && ! -d /mnt/app/eso/bin/apps/cluster ]] && res "I uninstall removes gal_env via manifest" PASS || res "I uninstall removes gal_env" FAIL
 printf 'on\n' > "$SCR/fakesd/Mods/ClusterIntegration/daemon_log.txt"; out=$(run)
