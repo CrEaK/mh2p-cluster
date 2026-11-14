@@ -1,7 +1,8 @@
 # CarPlay-Karte im Virtual Cockpit – Testversion
 
 Mit diesem Paket zeigt das Virtual Cockpit die CarPlay-Karte (Google Maps oder Apple Karten) an
-der Stelle der Audi-Karte. Getestet bisher nur in einem A6 C8. **Alles auf eigene Gefahr.**
+der Stelle der Audi-Karte. Entwickelt und getestet in einem A6 C8; Tester melden es auch in
+einem Q8 und einem e-tron als funktionierend. **Alles auf eigene Gefahr.**
 
 ## Voraussetzungen
 
@@ -43,14 +44,24 @@ sich geändert hat.
   Sekunden erscheint die CarPlay-Karte.
 - Lenkrad-Rädchen zoomt die Karte (Google Maps und Apple Karten; Waze reagiert nicht darauf).
   Beide Cockpit-Ansichten (große Karte / große Tachos) gehen.
+- Der Zoom wird gemerkt: Nach einem Neuverbinden oder MMI-Neustart zoomt die Karte ein paar
+  Sekunden nach dem Erscheinen wieder dorthin, wo du sie gelassen hast.
+- Die Cockpit-Karte wechselt zusammen mit CarPlay auf dem MMI zwischen Tag und Nacht.
+- Das iPhone wird um sein Tempolimit-Schild auf der Cockpit-Karte gebeten. Im Testauto ist
+  bisher keins erschienen; ob die Karten-App eins zeichnet, hängt womöglich von Region und
+  Route ab. Bitte melden, was ihr seht.
 - Die CarPlay-Karte bleibt im Cockpit, auch wenn das MMI etwas anderes zeigt, zum Beispiel
   Radio, Rückfahrkamera oder die Audi-Navigation.
 - **Umschalten im Cockpit:** Im Cockpit-Menü *Navigation* steht unter „Karte“ die Zeile
-  **Carplay Map** mit Häkchen. Sie erscheint nur, solange CarPlay verbunden ist. Häkchen an:
-  CarPlay-Karte. Häkchen aus: Audi-Karte. Die Einstellung bleibt nach einem Neustart erhalten.
-- Die Zoomanzeige der Audi-Karte unten (Lupe, „400 m“) und das Verkehrslogo links unten
-  („TMC“) sind ausgeblendet, solange die CarPlay-Karte läuft. Höhe, Straße und Kompass bleiben
-  stehen.
+  **Smartphone Map** mit Häkchen (in früheren Versionen „Carplay Map“). Sie erscheint nur,
+  solange CarPlay oder Android Auto seine Karte im Cockpit zeigt. Häkchen an: Karte vom
+  Handy. Häkchen aus: Audi-Karte. Die Einstellung bleibt nach einem Neustart erhalten.
+- Die Zoomanzeige der Audi-Karte unten (Lupe, „400 m“), das Verkehrslogo links unten („TMC“)
+  und das Logo der Satellitenkarte („Google“) sind ausgeblendet, solange die CarPlay-Karte
+  läuft. Höhe, Straße und Kompass bleiben stehen.
+- **Android Auto (per Kabel):** Google Maps erscheint ebenfalls im Cockpit, über die volle
+  Breite, mit der Abbiegekarte in beiden Ansichten frei neben den Rundinstrumenten. Das
+  Rädchen zoomt dort nicht; Google Maps zoomt selbst.
 
 ## Rückmeldung
 

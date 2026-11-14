@@ -33,12 +33,14 @@ import de.eso.widgets.guide.ISubmenuMenuItemConfigGuide;
 import de.eso.widgets.guide.IWidgetFactoryGuide;
 
 /**
- * "Carplay Map" row with a checkbox in the cockpit's navigation menu
+ * "Smartphone Map" row (called "Carplay Map" up to beta 2) with a checkbox
+ * in the cockpit's navigation menu
  * (screen nAV_FPK_MENU, 4000003, drawn by the MMI on the cluster terminal),
  * directly below "Karte". The checkbox is CarPlayMapSetting: on, the cockpit
  * keeps the CarPlay map while the phone sends the cockpit video, whatever
- * the MMI shows; off, it shows the Audi map. The row is only visible while a
- * CarPlay session sends the cockpit video.
+ * the MMI shows; off, it shows the Audi map. The same goes for Android
+ * Auto's cluster map (KombiMapGuard). The row is only visible while CarPlay
+ * or Android Auto sends a cockpit video (CarPlayMapSetting.isMenuVisible).
  *
  * How, the way luka-dev adds the CarPlay UpMix row on MIB2Q:
  * - Model: ChoiceModel MODEL_ID = module 40 index 33 (the stock CombiNavi
@@ -63,7 +65,7 @@ public final class CarPlayMapMenu {
     static final int SCREEN_MENU = 4000003;
     static final int MODEL_ID = 4000033;
     private static final int INDEX = MODEL_ID % 100000;
-    private static final String LABEL = "Carplay Map";
+    private static final String LABEL = "Smartphone Map";
 
     private static volatile ChoiceModel model;
 
@@ -173,7 +175,7 @@ public final class CarPlayMapMenu {
         public void executeCondition(int modelId, int screenId, HMIView[] conditionWidgets, int terminalID) {
             if (screenId == SCREEN_MENU && modelId == MODEL_ID) {
                 try {
-                    ((IMenuItemGuide) conditionWidgets[0]).setVisibleByGuide(CarPlayMapSetting.isConnected());
+                    ((IMenuItemGuide) conditionWidgets[0]).setVisibleByGuide(CarPlayMapSetting.isMenuVisible());
                 } catch (Throwable t) {
                     CarPlayMapSetting.log("Carplay Map: row visibility failed: " + t);
                 }
@@ -219,7 +221,7 @@ public final class CarPlayMapMenu {
         carplayMapConfig.add(carplayMapCheckbox);
         IMenuItemGuide carplayMap = widgetFactory.createMenuItem(carplayMapConfig);
         carplayMap.setModelID(MODEL_ID);
-        carplayMap.setVisibleByGuide(CarPlayMapSetting.isConnected());
+        carplayMap.setVisibleByGuide(CarPlayMapSetting.isMenuVisible());
         IIconGuide lastDestIcon = widgetFactory.createIcon();
         lastDestIcon.setBitmaps(new int[]{4000006});
         lastDestIcon.setBoundsByGuide(0, 0, 40, 40);
