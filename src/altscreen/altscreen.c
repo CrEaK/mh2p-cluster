@@ -29,6 +29,8 @@
  *   while the stream runs   -> libairplay's idle keep-alive timeout (30 s,
  *                              select() interposed) is held off, because the
  *                              phone's keep-alives travel inside stream 111
+ *   day / night changes     -> the head unit's setNightMode is repeated for the
+ *                              cluster display uuid
  *
  * The cockpit side is the installed cluster mod: when CarPlay owns the main
  * screen its Java part writes "start mode=<mirror.mode> ..." to
@@ -102,7 +104,7 @@
 #define ZOOM_PATH     "/tmp/altscreen_cmd"
 #define CL_UUID       "A6C80111-C1A5-4E20-B0C0-1057E12A0D10"
 #define CL_STREAM     "A6C80111-C1A5-4E20-B0C0-1057E12A0D11"
-#define CL_URL        "maps:/car/instrumentcluster?showETA=yes&maneuverLayout=rightAligned&showSpeedLimit=no"
+#define CL_URL        "maps:/car/instrumentcluster?showETA=yes&maneuverLayout=rightAligned&showSpeedLimit="
 
 #define ENC_UTF8      0x08000100
 
@@ -552,7 +554,9 @@ static int add_common(void *d, int night) {
 /* Cluster geometry, overridable without a rebuild: /tmp/altscreen.conf, else
  * cluster/altscreen.conf, lines "key=a,b,..." (phys=W,H in mm;
  * large=x,y,w,h and small=x,y,w,h safe areas; zoom_invert=0/1, default 1;
- * zoom_restore=0/1, default 1, and zoom_max=N, default 10, see ZOOM_SAVE).
+ * zoom_restore=0/1, default 1, and zoom_max=N, default 10, see ZOOM_SAVE;
+ * speedlimit=0/1, default 1: the phone is asked to draw its speed limit sign
+ * on the map, showSpeedLimit in the Maps cluster URL).
  *
  * Safe rectangles from the calibration pattern (cluster capture=test,
  * photographed in both cockpit views, 0.725 photo px per stream px):
@@ -571,6 +575,7 @@ static struct {
     int area[2][4];                     /* 0 = large map view, 1 = big gauges */
     int zoom_invert;
     int zoom_restore, zoom_max;
+    int speedlimit;
 } g_conf;
 
 static void parse_ints(const char *v, int *out, int n) {
@@ -591,6 +596,7 @@ static void load_conf(void) {
     g_conf.zoom_invert = 1;             /* A6 C8: positive roller steps zoom out */
     g_conf.zoom_restore = 1;
     g_conf.zoom_max = 10;
+    g_conf.speedlimit = 1;              /* iOS parses it; no sign seen on the A6 test car yet */
     f = fopen(CONF_TMP, "r");
     if (!f) f = fopen(CONF_PATH, "r");
     if (f) {
@@ -604,17 +610,18 @@ static void load_conf(void) {
             else if (!strcmp(line, "zoom_invert")) g_conf.zoom_invert = atoi(eq + 1);
             else if (!strcmp(line, "zoom_restore")) g_conf.zoom_restore = atoi(eq + 1);
             else if (!strcmp(line, "zoom_max")) g_conf.zoom_max = atoi(eq + 1);
+            else if (!strcmp(line, "speedlimit")) g_conf.speedlimit = atoi(eq + 1) ? 1 : 0;
         }
         fclose(f);
     }
     if (g_conf.zoom_max < 1) g_conf.zoom_max = 1;
     if (g_conf.zoom_max > 30) g_conf.zoom_max = 30;
     plog("conf: phys %dx%d mm, large %d,%d %dx%d, small %d,%d %dx%d, zoom_invert %d, "
-         "zoom_restore %d, zoom_max %d%s",
+         "zoom_restore %d, zoom_max %d, speedlimit %d%s",
          g_conf.phys_w, g_conf.phys_h, g_conf.area[0][0], g_conf.area[0][1], g_conf.area[0][2],
          g_conf.area[0][3], g_conf.area[1][0], g_conf.area[1][1], g_conf.area[1][2],
          g_conf.area[1][3], g_conf.zoom_invert, g_conf.zoom_restore, g_conf.zoom_max,
-         f ? "" : " (defaults)");
+         g_conf.speedlimit, f ? "" : " (defaults)");
 }
 
 /* Cockpit view as the mod's IMapClusterServiceWrapper last reported it:
@@ -689,6 +696,9 @@ static pthread_mutex_t g_mtx = PTHREAD_MUTEX_INITIALIZER;
 static void *g_ctrl_session;            /* session whose control SETUP got altScreen */
 static int g_session_gen;               /* counts those control SETUPs */
 static int g_zoom_gen;                  /* session whose saved zoom was restored */
+static int g_night_dio = -1;            /* last night mode dio_manager set, -1 = none yet */
+static void *g_night_session;           /* the session it set it for */
+static int g_night_advert = -1;         /* night mode the cluster display was advertised with */
 
 typedef struct receiver {
     void *session;                      /* retained (CFRetain) or NULL */
@@ -862,7 +872,7 @@ static int send_cmd_int(void *session, const char *type, const char *url,
         (!ikey || !set_int(params, ikey, ival)) &&
         !set_str(cmd, "type", type) && !set_val(cmd, "params", params))
         rc = ap.send_cmd(session, cmd, quiet ? NULL : (void *)cmd_done, (void *)type);
-    if (!quiet || rc) plog("command %s sent: rc=%d", type, rc);
+    if (!quiet || rc) plog("command %s%s%s sent: rc=%d", type, url ? " " : "", url ? url : "", rc);
     rel(params);
     rel(cmd);
     return rc;
@@ -961,7 +971,6 @@ static void zoom_store(int v) {
     plog("zoom: net %d step(s) saved", v);
 }
 
-
 static int ctl_stamp(long *mtime, long *size) {
     struct stat st;
     if (stat(CTL_PATH, &st) != 0) return -1;
@@ -993,11 +1002,23 @@ static void *cmd_main(void *arg) {
         tick++;
         if (!rx->streaming) continue;
         if (!ui_sent) {
-            send_cmd(rx->session, "showUI", CL_URL);
+            send_cmd(rx->session, "showUI", g_conf.speedlimit ? CL_URL "yes" : CL_URL "no");
             usleep(200 * 1000);
             send_cmd(rx->session, "forceKeyFrame", NULL);
             ui_sent = 1;
             last_kf = tick;
+            {
+                int night = -1;
+                pthread_mutex_lock(&g_mtx);
+                if (g_night_session == rx->session && g_night_dio >= 0 &&
+                    g_night_dio != g_night_advert)
+                    night = g_night_advert = g_night_dio;
+                pthread_mutex_unlock(&g_mtx);
+                if (night >= 0) {
+                    plog("night mode %d set since /info, sent for the cluster display", night);
+                    send_cmd_int(rx->session, "setNightMode", NULL, "nightMode", night, 0);
+                }
+            }
             if (g_conf.zoom_restore) {
                 int first;
                 pthread_mutex_lock(&g_mtx);
@@ -1530,7 +1551,16 @@ void *AirPlayCopyServerInfo(void *a0, void *a1, void *a2, void *a3) {
     pthread_mutex_unlock(&g_mtx);
     if (!info || !enabled || !ap_ready()) return info;
 
+    /* The stock value is dio_manager's start-up night mode and is never
+     * updated; once dio_manager has set the mode for this session, that wins. */
     night = get_int(info, "nightMode", &err) ? 1 : 0;
+    pthread_mutex_lock(&g_mtx);
+    if (g_night_session == a0 && g_night_dio >= 0 && g_night_dio != night) {
+        night = g_night_dio;
+        set_int(info, "nightMode", night);
+    }
+    g_night_advert = night;
+    pthread_mutex_unlock(&g_mtx);
     displays = get_val(info, "displays");
     if (!is_type(displays, ap.arr_type) || ap.arr_count(displays) < 1 ||
         !is_type(ap.arr_at(displays, 0), ap.dict_type)) {
@@ -1634,6 +1664,43 @@ int select(int nfds, fd_set *rd, fd_set *wr, fd_set *ex, struct timeval *tv) {
         t.tv_sec = left;
         t.tv_usec = 0;
     }
+}
+
+/* Day / night. dio_manager calls this (session, night, NULL, NULL) when the
+ * car switches; libairplay sends setNightMode {nightMode} without a display
+ * uuid. The iPhone applies that to the main screen and to further displays
+ * that do not advertise a nightMode of their own. The cluster display does
+ * (add_common), so it kept the mode from /info until the next session: main
+ * screen in day mode, cockpit map still dark (reported on a Q8, and by
+ * luka-dev's MHI2Q hook, which repeats the command with the uuid as well).
+ * The same command goes out again for the cluster display; the stock result
+ * is returned whatever happens to that one. */
+typedef int (*fn_night_t)(void *, int, void *, void *);
+
+int AirPlayReceiverSessionSetNightMode(void *session, int night, void *done, void *ctx) {
+    static fn_night_t real;
+    int rc, mine, crc = -1;
+    if (!real) real = (fn_night_t)dlsym(RTLD_NEXT, "AirPlayReceiverSessionSetNightMode");
+    if (!real) { plog("AirPlayReceiverSessionSetNightMode: real not found"); return -6705; }
+    rc = real(session, night, done, ctx);
+    night = night ? 1 : 0;
+    pthread_mutex_lock(&g_mtx);
+    g_night_dio = night;
+    g_night_session = session;
+    mine = (session && session == g_ctrl_session);
+    pthread_mutex_unlock(&g_mtx);
+    if (mine && ap_ready()) {
+        crc = send_cmd_int(session, "setNightMode", NULL, "nightMode", night, 0);
+        if (crc == 0) {
+            pthread_mutex_lock(&g_mtx);
+            g_night_advert = night;
+            pthread_mutex_unlock(&g_mtx);
+            slog("night mode %d sent for the cluster display", night);
+        }
+    }
+    plog("night mode %d from the head unit (session %p): main rc=%d, cluster display %s rc=%d",
+         night, session, rc, mine ? "sent" : "not sent (no altScreen session)", crc);
+    return rc;
 }
 
 typedef int (*fn_teardown_t)(void *, void *, int, void *);
