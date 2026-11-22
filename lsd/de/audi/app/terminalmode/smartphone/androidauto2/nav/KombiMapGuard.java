@@ -68,7 +68,7 @@ import java.lang.reflect.Method;
  */
 public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
 
-    public static final String BUILD = "kombi-guard 2026-11-14b (AA + CarPlay, displayable 62, view size, video check, zoom scale, traffic and satellite logo, Smartphone Map menu for CarPlay and AA, no screen mirror, dm watchdog, normal priority)";
+    public static final String BUILD = "kombi-guard 2026-11-19a (AA + CarPlay, displayable 62, view size, cockpit skin, video check, zoom scale, traffic and satellite logo, Smartphone Map menu for CarPlay and AA, no screen mirror, dm watchdog, normal priority)";
 
     private static final String MAP_CLUSTER_CLASS = "de.audi.tghu.navi.app.cluster.IMapClusterService";
     private static final int CL_RENDERING = 2;
@@ -114,6 +114,7 @@ public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
     private long viewSizeLookup = 0L;
     private int viewSizeTries = 0;
     private int lastViewSize = -99;
+    private String lastSkin = null;
 
     private KombiMapGuard(IContext context, AndroidAutoClusterIntegration integration, Object cpIntegration) {
         this.context = context;
@@ -588,13 +589,58 @@ public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
             log("cockpit view size " + size + (size == 1 ? " (small stage, big gauges)" : " (big stage, large map)"));
             writeView(size != 1);
         }
+        pollSkin();
+    }
+
+    /**
+     * The cockpit layout ("skin") the driver has selected. The HMI's view size
+     * manager (de.eso.widgets.core.ViewSizeManager, IViewSizeManagerRevo)
+     * knows it as a ClusterSkinEnum: CLASSIC, SPORT, RADIUS, CBEV,
+     * CLASSIC_LIGHT, CLASSIC_RS, SPORT_RS. SPORT, SPORT_RS (the "Performance"
+     * view of S and RS models) and CBEV (e-tron) have the dial in the centre
+     * and the small stage moved to the left, by 596 and 580 pixels. Reported
+     * on an A6: in that small view the cockpit shows the left part of the
+     * CarPlay picture, without the arrow and the cards. Written to
+     * /tmp/altscreen_skin as "offset tube name" for the dio_manager hook,
+     * which then tells the iPhone view areas that fit. By reflection: the
+     * interface is not on every unit's class path.
+     */
+    private void pollSkin() {
+        String desc;
+        try {
+            Object skin = viewSizeManager.getClass().getMethod("getCurrentSkin", (Class[]) null)
+                    .invoke(viewSizeManager, (Object[]) null);
+            if (skin == null) {
+                return;
+            }
+            Object off = skin.getClass().getMethod("getAbsoluteSmallStageOffset", (Class[]) null)
+                    .invoke(skin, (Object[]) null);
+            Object tube = skin.getClass().getMethod("hasCenteredTube", (Class[]) null)
+                    .invoke(skin, (Object[]) null);
+            desc = off + " " + (Boolean.TRUE.equals(tube) ? "1" : "0") + " " + skin;
+        } catch (Throwable t) {
+            if (lastSkin == null) {
+                lastSkin = "";
+                log("cockpit skin not readable: " + t);
+            }
+            return;
+        }
+        if (!desc.equals(lastSkin)) {
+            lastSkin = desc;
+            log("cockpit skin: " + desc + " (small stage offset, centred dial, name)");
+            writeFile("/tmp/altscreen_skin", desc + "\n");
+        }
     }
 
     private static void writeView(boolean bigStage) {
+        writeFile("/tmp/altscreen_view", bigStage ? "large\n" : "small\n");
+    }
+
+    private static void writeFile(String path, String text) {
         FileOutputStream out = null;
         try {
-            out = new FileOutputStream("/tmp/altscreen_view", false);
-            out.write((bigStage ? "large\n" : "small\n").getBytes());
+            out = new FileOutputStream(path, false);
+            out.write(text.getBytes());
         } catch (Throwable t) {
         } finally {
             if (out != null) {
