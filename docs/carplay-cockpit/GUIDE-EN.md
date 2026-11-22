@@ -9,7 +9,7 @@ and an e-tron. **Use at your own risk.**
 - **Check the MMI software version:** in the MMI under *Settings → System information →
   Version* (or similar). It must say `MH2p_…_P2711`. On other versions, please get in touch
   first. CarPlay keeps working there, but nothing shows up in the cockpit.
-- **Wireless CarPlay** already works. Wired CarPlay is not supported.
+- **CarPlay** already works, wireless or by cable. The cockpit map works with both.
 - **SD card** (or USB stick, if your car accepts ModKit updates from a stick), formatted as
   FAT32.
 - **Included:** LawPaul's *NavCompassIgnore* mod (folder `Mods/NavCompassIgnore`,
@@ -61,6 +61,10 @@ installed and only replaces what changed.
 - **Android Auto (wired):** Google Maps appears in the cockpit as well, across the full width,
   with the turn card clear of the dials in both layouts. The roller does not zoom it; Google
   Maps zooms by itself there.
+- **Fitting the CarPlay picture (optional):** if the cockpit hides part of the map's cards,
+  for example the arrival line in the "Performance" view of S and RS models, copy
+  `Mods/ClusterIntegration/altscreen_conf.example.txt` on the card to `altscreen_conf.txt`,
+  set the values as described in the file, and insert the card again.
 
 ## Feedback
 

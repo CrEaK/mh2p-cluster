@@ -9,7 +9,7 @@ einem Q8 und einem e-tron als funktionierend. **Alles auf eigene Gefahr.**
 - **MMI-Softwareversion prüfen:** im MMI unter *Einstellungen → Systeminformationen → Version*
   (oder ähnlich). Dort muss `MH2p_…_P2711` stehen. Bei anderen Versionen bitte erst
   melden. CarPlay läuft dort zwar weiter, aber im Cockpit kommt nichts an.
-- **CarPlay kabellos** funktioniert schon. Mit Kabel geht es nicht.
+- **CarPlay** funktioniert schon, kabellos oder per Kabel. Die Cockpit-Karte geht mit beidem.
 - **SD-Karte** (oder USB-Stick, falls dein Auto ModKit-Updates vom Stick annimmt), FAT32
   formatiert.
 - **Liegt bei:** LawPauls Mod *NavCompassIgnore* (Ordner `Mods/NavCompassIgnore`,
@@ -62,6 +62,11 @@ sich geändert hat.
 - **Android Auto (per Kabel):** Google Maps erscheint ebenfalls im Cockpit, über die volle
   Breite, mit der Abbiegekarte in beiden Ansichten frei neben den Rundinstrumenten. Das
   Rädchen zoomt dort nicht; Google Maps zoomt selbst.
+- **CarPlay-Bild anpassen (optional):** Verdeckt das Cockpit einen Teil der Karten-Anzeigen,
+  zum Beispiel die Ankunftszeile in der „Performance“-Ansicht der S- und RS-Modelle, dann
+  kopiere auf der Karte `Mods/ClusterIntegration/altscreen_conf.example.txt` nach
+  `altscreen_conf.txt`, trage die Werte ein, wie in der Datei beschrieben, und stecke die
+  Karte noch einmal ein.
 
 ## Rückmeldung
 
