@@ -184,6 +184,18 @@ grep -q '"heartbeatInterval": 2500' /mnt/app/eso/bin/apps/cluster/cluster_config
 grep -q 'GAL_CLUSTER_INSET_LEFT=480' /mnt/app/eso/bin/apps/cluster/gal_env && res "N changed gal_env installed" PASS || res "N changed gal_env installed" FAIL
 out=$(run); echo "$out" | grep -q 'skip identical:    /mnt/app/eso/bin/apps/cluster/gal_env' && res "N unchanged gal_env skipped by content" PASS || res "N unchanged gal_env skipped" FAIL
 ls "$MOD_PATH/Backup" | grep -q 'cluster_config.json.backup' && res "N backup of the replaced config exists" PASS || res "N backup exists" FAIL
+echo "=== P: a same-length edit of a staged text file is a change"
+setup MH2p_ER_AUG35_P2711 aa aa "enable_carplay_altscreen.txt"
+printf 'GAL_CLUSTER_INSET_LEFT=480\n' > "$SCR/fakesd/Mods/ClusterIntegration/gal_env.txt"
+printf 'large=500,155,940,360\n' > "$SCR/fakesd/Mods/ClusterIntegration/altscreen_conf.txt"
+run >/dev/null
+printf 'GAL_CLUSTER_INSET_LEFT=490\n' > "$SCR/fakesd/Mods/ClusterIntegration/gal_env.txt"
+printf 'large=500,155,940,390\r\n' > "$SCR/fakesd/Mods/ClusterIntegration/altscreen_conf.txt"
+out=$(run)
+grep -q 'GAL_CLUSTER_INSET_LEFT=490' /mnt/app/eso/bin/apps/cluster/gal_env && res "P gal_env: 480 -> 490 installed" PASS || res "P gal_env: 480 -> 490 installed" FAIL
+[[ "$(cat /mnt/app/eso/bin/apps/cluster/altscreen.conf 2>/dev/null)" == 'large=500,155,940,390' ]] && res "P altscreen.conf: 360 -> 390 installed" PASS || res "P altscreen.conf: 360 -> 390 installed" FAIL
+out=$(run)
+echo "$out" | grep -q 'skip identical:    /mnt/app/eso/bin/apps/cluster/gal_env' && echo "$out" | grep -q 'skip identical:    /mnt/app/eso/bin/apps/cluster/altscreen.conf' && res "P unchanged files skipped on the next run" PASS || res "P unchanged files skipped on the next run" FAIL
 rm -rf /mnt/app /fs /ifs "$SCR/jarsrc" /tmp/gal_preload.log
 echo "=== O: gal wrapper starts the cluster daemon when it is missing"
 setup MH2p_ER_AUG35_P2873 aa aa ""; run >/dev/null

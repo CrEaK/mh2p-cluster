@@ -31,6 +31,10 @@
 #                         packet filter; sets mirror.mode "fill capture=h264".
 #                         Built for libairplay 320.17.1 (MH2p_ER_AUG35_P2711);
 #                         on any other build the hook passes everything through
+#     altscreen_conf.txt  with enable_carplay_altscreen.txt: key=value lines
+#                         for the CarPlay cockpit map (view areas per cockpit
+#                         layout, physical size, zoom), installed as
+#                         altscreen.conf; an empty file removes it again
 #     config_overrides.txt  key=value lines applied to the installed
 #                         cluster_config.json "config" block (e.g. forceRHD=true)
 #     no_stub.txt         Audi: do not install the StorageMountHandler stand-in
@@ -149,6 +153,31 @@ files_same() {
     [[ -n "$FILE_CMP" ]] || return 2
     same_content_with "$FILE_CMP" "$1" "$2"
     case $? in 0) return 0 ;; 1) return 1 ;; *) return 2 ;; esac
+}
+# text_same A B: do two small text files hold the same lines? Shell built-ins
+# only. For the files this script stages itself (gal_env, altscreen.conf):
+# they are new on every run, so the time rule of files_identical cannot be
+# used, and on a unit with only the wc fingerprint files_same takes a
+# same-length edit (360 -> 390) for no change. Seen on an A6: a changed view
+# area height was reported as "skip identical" and never reached the unit.
+text_same() {
+    typeset la lb ra rb
+    [[ -f "$1" && -f "$2" ]] || return 1
+    exec 5<"$1" 6<"$2"
+    while :; do
+        la=""; lb=""
+        IFS= read -r la <&5; ra=$?
+        IFS= read -r lb <&6; rb=$?
+        if [[ $ra -ne 0 || $rb -ne 0 ]]; then
+            exec 5<&- 6<&-
+            [[ $ra -ne 0 && $rb -ne 0 && "$la" == "$lb" ]] && return 0
+            return 1
+        fi
+        if [[ "$la" != "$lb" ]]; then
+            exec 5<&- 6<&-
+            return 1
+        fi
+    done
 }
 # files_identical SRC DST: is the unit's copy current? files_same plus,
 # with only the wc fingerprint (counts, not a checksum: a same-length edit
@@ -780,6 +809,42 @@ if [[ $ALTSCREEN -eq 1 ]]; then
         print "carplay altscreen: WARN could not set mirror.mode in cluster_config.json; the JAR sets it before every start anyway"
     fi
     [[ -f "$CLUSTER_DIR/altscreen_off" ]] && print "carplay altscreen: WARN $CLUSTER_DIR/altscreen_off exists, the hook stays passive until it is deleted"
+    # Per-car tuning of the CarPlay cockpit map without a shell on the unit:
+    # Mods/ClusterIntegration/altscreen_conf.txt holds key=value lines for the
+    # hook (see altscreen_conf.example.txt); the valid ones become
+    # $CLUSTER_DIR/altscreen.conf, which the hook reads at every connection.
+    # A file without a valid line removes an installed altscreen.conf, so the
+    # hook's defaults apply again. Without the file nothing is touched: an
+    # altscreen.conf made by hand on the unit stays.
+    ALT_CONF_SRC="$MOD_ROOT/altscreen_conf.txt"
+    ALT_CONF_DST="$CLUSTER_DIR/altscreen.conf"
+    ALT_CONF_STAGE="/tmp/cluster_altscreen_conf.$$"
+    rm -f "$ALT_CONF_STAGE"
+    if [[ -f "$ALT_CONF_SRC" ]]; then
+        awk '{ sub(/\r$/, ""); sub(/[ \t]*#.*$/, ""); gsub(/^[ \t]+|[ \t]+$/, "") }
+             /^(phys|large|small|sport_large|sport_small|zoom_invert|zoom_restore|zoom_max|speedlimit|keyframe_ms)=[0-9]+(,[0-9]+)*$/ { print; next }
+             /./ { bad++ }
+             END { exit (bad > 0 ? 1 : 0) }' "$ALT_CONF_SRC" > "$ALT_CONF_STAGE" 2>/dev/null
+        [[ $? -ne 0 ]] && print "altscreen conf:    WARN altscreen_conf.txt has lines that are not key=numbers with a known key; they are ignored"
+        if [[ -s "$ALT_CONF_STAGE" ]]; then
+            # the staged file is new every run, so compare by content, not time
+            text_same "$ALT_CONF_STAGE" "$ALT_CONF_DST"
+            if [[ $? -eq 0 ]]; then
+                print "skip identical:    $ALT_CONF_DST"
+            else
+                install_file "$ALT_CONF_STAGE" "$ALT_CONF_DST" && chmod 644 "$ALT_CONF_DST" 2>/dev/null
+            fi
+            awk '{ printf "altscreen conf:    %s\n", $0 }' "$ALT_CONF_DST"
+        elif [[ -f "$ALT_CONF_DST" ]]; then
+            bk="$BACKUP_DIR/altscreen.conf.backup.$(ts)"
+            cp -p "$ALT_CONF_DST" "$bk" && rm -f "$ALT_CONF_DST" && print "altscreen conf:    altscreen_conf.txt has no setting, removed $ALT_CONF_DST -> $bk" && note "remove $ALT_CONF_DST backup=$bk"
+        else
+            print "altscreen conf:    altscreen_conf.txt has no setting, the hook uses its defaults"
+        fi
+    elif [[ -f "$ALT_CONF_DST" ]]; then
+        awk '{ printf "altscreen conf:    %s (installed file, kept)\n", $0 }' "$ALT_CONF_DST"
+    fi
+    rm -f "$ALT_CONF_STAGE"
 else
     typeset af
     for af in altscreen.so altscreen_pf.sh; do
@@ -878,7 +943,7 @@ if [[ "$OEM" == "AU" ]]; then
 fi
 if [[ -s "$GAL_ENV_STAGE" ]]; then
     # the staged file is new every run, so compare by content, not time
-    files_same "$GAL_ENV_STAGE" "$GAL_ENV_DST"
+    text_same "$GAL_ENV_STAGE" "$GAL_ENV_DST"
     if [[ $? -eq 0 ]]; then
         print "skip identical:    $GAL_ENV_DST"
     else

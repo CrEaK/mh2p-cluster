@@ -73,6 +73,21 @@ PY
 printf '#!/bin/sh\necho "PRELOAD=$LD_PRELOAD"\n' > /mnt/app/eso/bin/apps/dio_manager.real; chmod 755 /mnt/app/eso/bin/apps/dio_manager.real
 mksh /mnt/app/eso/bin/apps/dio_manager 2>/dev/null | grep -q "PRELOAD=$AC/altscreen.so$" && res "altscreen: wrapper preloads altscreen.so" PASS || res "altscreen: wrapper preloads altscreen.so" FAIL
 out=$(mksh "$MOD_PATH/install.sh" 2>&1); echo "$out" | grep -q "skip identical:    $AC/altscreen.so" && echo "$out" | grep -q 'carplay altscreen: ON' && res "altscreen: re-run idempotent" PASS || res "altscreen: re-run idempotent" FAIL
+echo "=== altscreen_conf.txt: tuning file from the card ==="
+ACF=$AC/altscreen.conf; ACS="$SCR/fakesd/Mods/ClusterIntegration/altscreen_conf.txt"
+printf '# Performance view\r\nlarge=500,155,940,370  # less high\r\nphys=384,144\r\nurl=maps:/car\r\nsmall=1,2,x,4\r\nPATH=/evil\r\nsport_small=54,155,480,370\r\nzoom_max=12\r\n' > "$ACS"
+out=$(mksh "$MOD_PATH/install.sh" 2>&1)
+[[ "$(cat $ACF)" == $'large=500,155,940,370\nphys=384,144\nsport_small=54,155,480,370\nzoom_max=12' ]] && echo "$out" | grep -q 'altscreen conf:    WARN' && echo "$out" | grep -q 'altscreen conf:    large=500,155,940,370' && res "altscreen conf: only valid lines installed (CR, comments, unknown keys dropped)" PASS || res "altscreen conf: only valid lines installed" FAIL
+grep -q "add $ACF" "$MOD_PATH/Backup/manifest.txt" && res "altscreen conf: recorded as add" PASS || res "altscreen conf: recorded as add" FAIL
+out=$(mksh "$MOD_PATH/install.sh" 2>&1); echo "$out" | grep -q "skip identical:    $ACF" && res "altscreen conf: unchanged file skipped by content" PASS || res "altscreen conf: unchanged file skipped" FAIL
+printf 'large=500,155,940,350\n' > "$ACS"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
+[[ "$(cat $ACF)" == 'large=500,155,940,350' ]] && echo "$out" | grep -q "backup target:     $ACF" && ! echo "$out" | grep -q 'altscreen conf:    WARN' && res "altscreen conf: changed file replaces the installed one, with backup" PASS || res "altscreen conf: changed file replaces the installed one" FAIL
+rm -f "$ACS"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
+[[ "$(cat $ACF)" == 'large=500,155,940,350' ]] && echo "$out" | grep -q 'large=500,155,940,350 (installed file, kept)' && res "altscreen conf: kept without altscreen_conf.txt" PASS || res "altscreen conf: kept without altscreen_conf.txt" FAIL
+printf '# back to the defaults\n' > "$ACS"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
+[[ ! -f $ACF ]] && echo "$out" | grep -q 'has no setting, removed' && ls "$MOD_PATH/Backup" | grep -q '^altscreen.conf.backup' && res "altscreen conf: file without a setting removes altscreen.conf" PASS || res "altscreen conf: file without a setting removes altscreen.conf" FAIL
+out=$(mksh "$MOD_PATH/install.sh" 2>&1); echo "$out" | grep -q 'has no setting, the hook uses its defaults' && [[ ! -f $ACF ]] && res "altscreen conf: nothing to remove, defaults reported" PASS || res "altscreen conf: nothing to remove" FAIL
+rm -f "$ACS"
 touch "$SCR/fakesd/Mods/ClusterIntegration/enable_carplay.txt"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
 echo "$out" | grep -q 'enable_carplay_altscreen.txt needs the Audi JAR' && [[ ! -f $AC/altscreen.so ]] && res "altscreen: ignored and removed with enable_carplay.txt" PASS || res "altscreen: ignored with enable_carplay.txt" FAIL
 rm -f "$SCR/fakesd/Mods/ClusterIntegration/enable_carplay.txt"; mksh "$MOD_PATH/install.sh" >/dev/null 2>&1

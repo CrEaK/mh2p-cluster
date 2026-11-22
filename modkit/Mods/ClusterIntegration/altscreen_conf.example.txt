@@ -1,0 +1,44 @@
+# Copy to altscreen_conf.txt (next to Update/) to tune the CarPlay map in the
+# cockpit (needs enable_carplay_altscreen.txt). One key=value per line, numbers
+# only; '#' starts a comment. install.sh copies the valid lines to
+# /mnt/app/eso/bin/apps/cluster/altscreen.conf; the hook reads that file every
+# time the iPhone connects, so after the card ran, reconnecting is enough.
+# An altscreen_conf.txt without any setting removes the installed file again.
+#
+# View areas: the part of the 1920x720 picture the cockpit shows, as
+# x,y,width,height in pixels from the top left. The iPhone keeps its turn
+# card, ETA line and speed limit sign inside that rectangle. "large" is the
+# large-map layout, "small" the large-gauges layout. These are the defaults
+# (Audi A6 C8, standard views):
+#large=500,155,940,410
+#small=624,158,672,400
+#
+# Cockpits with the dial in the centre ("Sport" layout, the "Performance"
+# view of S and RS models, e-tron): the mod recognises that layout and uses
+# these two areas instead of large and small. There the status bar is
+# higher, and the small view is a window on the left. Defaults:
+#sport_large=500,155,940,380
+#sport_small=54,155,480,370
+#
+# A card or the arrival line is hidden at the bottom: lower the last number
+# in steps of 20. Cut off on the left: raise the first number. Cut off on
+# the right: lower the third number.
+#
+# Physical size of the picture in mm, as told to the iPhone. Larger numbers
+# make the iPhone draw its cards and texts smaller.
+#phys=384,144
+#
+# Steering-wheel roller: 1 = positive steps zoom out (A6 C8), 0 = the other
+# way round.
+#zoom_invert=1
+#
+# Remember the zoom across restarts (1/0) and the largest step count kept.
+#zoom_restore=1
+#zoom_max=10
+#
+# Ask the iPhone for its speed limit sign on the cockpit map (1/0).
+#speedlimit=1
+#
+# A full picture (keyframe) is requested this often, in milliseconds
+# (1000..60000). A damaged picture heals within that time.
+#keyframe_ms=3000
