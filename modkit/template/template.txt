@@ -4,26 +4,31 @@
 # codecRes=1080 (1920x1080); '#' starts a comment. Keys not listed keep the
 # tool's defaults. Remove this file to ship the hook as released.
 #
-# Margins and bottom inset are the Q7 (P2711) values from PR #11, verified on
-# the same 1920x722 cockpit, used with gal_h264.panY=0 (centred crop, frame
-# rows 179..900): the phone keeps its UI inside those rows and out of the
-# Audi info bar (inset_bottom).
+# The entry declares no margins: the phone lays its cluster UI out over the
+# whole 1920x1080 frame, of which the cockpit shows rows 179..900 with
+# gal_h264.panY=0 (centred crop), and the content insets keep the car marker,
+# the turn card and the arrival line inside the part between the dials. The
+# values are those of the cluster entry in the upstream release v1181, tried
+# on an A6 C8 (P2711) with Google Maps on 18 November 2026: arrow in the
+# centre, turn card at the top, arrival line at the bottom, all of it clear of
+# the dials in the large map view and in the view with the two large dials,
+# parked and driving. Android Auto gets the entry once per connection, so one
+# entry has to serve both cockpit views.
 #
-# Side insets and density were chosen on an A6 C8 (P2711) with Google Maps:
-# - left/right 160 (Q7): the turn card sits flush right behind the speed
-#   dial; its ETA line is cut in the large map view and the whole card is
-#   hidden in the view with the two large dials (also reported on an e-tron).
-# - 500/500: clear of the dial in the large map view, still cut in the
-#   large-dial view, where only about x 616..1304 is visible.
-# - 624/624: Google Maps drops the turn card (too little room left).
-# - 500/624 with density 160: the card (about 336 px wide) ends at x 1296
-#   and is fully visible in both views. Android Auto gets these values once
-#   per connection, so one entry has to serve both cockpit views.
-height_margin=358
-margin_top=179
-margin_bottom=180
-inset_bottom=195
-inset_left=500
-inset_right=624
-density=160
-real_density=200
+# Tried before and dropped:
+# - Q7 values from PR #11 (margins top 179 / bottom 180, height_margin 358,
+#   insets bottom 195 / left 160 / right 160): the turn card sits behind the
+#   speed dial (also reported on an e-tron).
+# - the same margins with insets left 500 / right 624 at density 160 (beta 3):
+#   the card is visible in both views, but flush right next to the dial.
+# - the v1181 values as margins instead of insets: the large view is almost
+#   black. Margins 179/180 with insets 680/680 at density 145: no turn card.
+height_margin=0
+margin_top=0
+margin_bottom=0
+inset_top=315
+inset_bottom=360
+inset_left=680
+inset_right=680
+density=145
+real_density=145

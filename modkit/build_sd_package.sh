@@ -212,6 +212,16 @@ if [[ -f "$TEMPLATE_TXT" ]]; then
     echo "  template: Mods/ClusterIntegration/Update/gal_cluster.so cluster entry replaced from ${TEMPLATE_TXT##*/}"
 fi
 
+# Byte patches to the Android Auto hook (modkit/patches/gal_cluster.patches.txt,
+# bytes verified before and after by apply_patches.py; GAL_CLUSTER_PATCHES=<file>
+# for another list, an empty value ships the hook unpatched).
+GAL_CLUSTER_PATCHES="${GAL_CLUSTER_PATCHES-$HERE/patches/gal_cluster.patches.txt}"
+if [[ -n "$GAL_CLUSTER_PATCHES" && -f "$GAL_CLUSTER_PATCHES" ]]; then
+    HOOK_SO="$PKG/Mods/ClusterIntegration/Update/gal_cluster.so"
+    python3 "$HERE/patches/apply_patches.py" "$HOOK_SO" "$GAL_CLUSTER_PATCHES" "$WORK/gal_cluster.bytepatched" | sed 's/^/  patches: /'
+    cp "$WORK/gal_cluster.bytepatched" "$HOOK_SO" && chmod 755 "$HOOK_SO"
+fi
+
 # Keep the tracked copy of the derived Audi jar in step with the package, so
 # the overlay in this repository ships the same bytes the build produced.
 for f in "$PKG"/Mods/ClusterIntegration/Update/aa_only/ClusterIntegration_*_aa.jar; do

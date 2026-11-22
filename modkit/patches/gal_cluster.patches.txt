@@ -1,0 +1,15 @@
+# Byte patches to the Android Auto hook gal_cluster.so (release v0034,
+# 59791 bytes), applied by build_sd_package.sh with apply_patches.py after
+# verifying the bytes they replace. Offsets are file offsets.
+#
+# Acknowledge the cluster pictures at a fixed rate. The hook did not
+# acknowledge the cockpit video frames to the phone itself, it only passed on
+# the acknowledgements of the main screen's stream, and both streams dropped
+# to about 3 pictures per second (stutter in turns, seen on the A6 C8 and
+# reported by a tester on another A6). The hook has a 30 Hz timer for these
+# acknowledgements behind a conditional branch (bne); the branch becomes a
+# nop, so the timer always runs.
+# On the A6 C8 (P2711, 18 November 2026) the picture ran smoothly while
+# driving; in a drive with the decoder log 2500 of 2500 pictures were
+# decoded and shown.
+0x419c  bad1  00bf  # ack timer always runs
