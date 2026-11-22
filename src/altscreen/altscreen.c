@@ -101,6 +101,7 @@
 #define CONF_TMP      "/tmp/altscreen.conf"
 #define CONF_PATH     "/mnt/app/eso/bin/apps/cluster/altscreen.conf"
 #define VIEW_PATH     "/tmp/altscreen_view"
+#define SKIN_PATH     "/tmp/altscreen_skin"   /* "offset tube name", from KombiMapGuard */
 #define ZOOM_PATH     "/tmp/altscreen_cmd"
 #define CL_UUID       "A6C80111-C1A5-4E20-B0C0-1057E12A0D10"
 #define CL_STREAM     "A6C80111-C1A5-4E20-B0C0-1057E12A0D11"
@@ -112,6 +113,10 @@
 
 static pthread_mutex_t g_log_mtx = PTHREAD_MUTEX_INITIALIZER;
 static long g_logged;
+
+/* let the compiler check the arguments against the format strings */
+static void plog(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void slog(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 static void plog(const char *fmt, ...) {
     FILE *f;
@@ -573,10 +578,23 @@ static int add_common(void *d, int night) {
 static struct {
     int phys_w, phys_h;
     int area[2][4];                     /* 0 = large map view, 1 = big gauges */
+    int sport[2][4];                    /* the same two for a cockpit with the dial in the centre */
     int zoom_invert;
     int zoom_restore, zoom_max;
     int speedlimit;
+    int keyframe_ms;
+    char url[160];                      /* showUI URL for experiments; empty = CL_URL */
 } g_conf;
+
+/* Experiments without a reconnect: a URL written to this file is sent as
+ * showUI on the running stream, once per change of the file (dio_manager may
+ * not be allowed to remove a file root created in /tmp). */
+#define SHOWUI_TMP    "/tmp/altscreen_showui"
+
+static void chomp(char *s) {
+    size_t n = strlen(s);
+    while (n && (s[n - 1] == '\n' || s[n - 1] == '\r' || s[n - 1] == ' ')) s[--n] = 0;
+}
 
 static void parse_ints(const char *v, int *out, int n) {
     int i;
@@ -585,6 +603,23 @@ static void parse_ints(const char *v, int *out, int n) {
         while (*v && *v != ',') v++;
         if (*v == ',') v++;
     }
+}
+
+/* The cockpit layout as the HMI knows it (ClusterSkinEnum, written by
+ * KombiMapGuard whenever it changes): with the dial in the centre the small
+ * stage sits "offset" pixels to the left (596 SPORT and SPORT_RS, 580 CBEV).
+ * Returns 1 for such a layout, 0 for the others and without the file. */
+static int read_skin(int *off_out, char *name, size_t cap) {
+    int off = 0, tube = 0;
+    char n[24] = "";
+    FILE *s = fopen(SKIN_PATH, "r");
+    if (s) {
+        if (fscanf(s, "%d %d %23s", &off, &tube, n) < 2) { off = 0; tube = 0; }
+        fclose(s);
+    }
+    if (off_out) *off_out = off;
+    if (name) snprintf(name, cap, "%s", n[0] ? n : (s ? "?" : "not reported"));
+    return tube && off > 0;
 }
 
 static void load_conf(void) {
@@ -597,6 +632,15 @@ static void load_conf(void) {
     g_conf.zoom_restore = 1;
     g_conf.zoom_max = 10;
     g_conf.speedlimit = 1;              /* iOS parses it; no sign seen on the A6 test car yet */
+    g_conf.keyframe_ms = 3000;          /* a broken picture heals within this time */
+    g_conf.url[0] = 0;
+    /* SPORT / SPORT_RS ("Performance" view, S and RS): the status bar is higher
+     * in the large view (410 hid the arrival line on an A6, 360 left a gap),
+     * and the small stage is a window on the left. 54 = 650 - 596: fifthBro's
+     * safe area for a picture he moves 596 px to the left, here for the
+     * picture as it is. */
+    g_conf.sport[0][0] = 500; g_conf.sport[0][1] = 155; g_conf.sport[0][2] = 940; g_conf.sport[0][3] = 380;
+    g_conf.sport[1][0] = 54;  g_conf.sport[1][1] = 155; g_conf.sport[1][2] = 480; g_conf.sport[1][3] = 370;
     f = fopen(CONF_TMP, "r");
     if (!f) f = fopen(CONF_PATH, "r");
     if (f) {
@@ -607,21 +651,57 @@ static void load_conf(void) {
             if (!strcmp(line, "phys")) { int v[2] = { g_conf.phys_w, g_conf.phys_h }; parse_ints(eq + 1, v, 2); g_conf.phys_w = v[0]; g_conf.phys_h = v[1]; }
             else if (!strcmp(line, "large")) parse_ints(eq + 1, g_conf.area[0], 4);
             else if (!strcmp(line, "small")) parse_ints(eq + 1, g_conf.area[1], 4);
+            else if (!strcmp(line, "sport_large")) parse_ints(eq + 1, g_conf.sport[0], 4);
+            else if (!strcmp(line, "sport_small")) parse_ints(eq + 1, g_conf.sport[1], 4);
             else if (!strcmp(line, "zoom_invert")) g_conf.zoom_invert = atoi(eq + 1);
             else if (!strcmp(line, "zoom_restore")) g_conf.zoom_restore = atoi(eq + 1);
             else if (!strcmp(line, "zoom_max")) g_conf.zoom_max = atoi(eq + 1);
             else if (!strcmp(line, "speedlimit")) g_conf.speedlimit = atoi(eq + 1) ? 1 : 0;
+            else if (!strcmp(line, "keyframe_ms")) g_conf.keyframe_ms = atoi(eq + 1);
+            else if (!strcmp(line, "url")) {
+                snprintf(g_conf.url, sizeof(g_conf.url), "%s", eq + 1);
+                chomp(g_conf.url);
+            }
         }
         fclose(f);
     }
     if (g_conf.zoom_max < 1) g_conf.zoom_max = 1;
     if (g_conf.zoom_max > 30) g_conf.zoom_max = 30;
-    plog("conf: phys %dx%d mm, large %d,%d %dx%d, small %d,%d %dx%d, zoom_invert %d, "
-         "zoom_restore %d, zoom_max %d, speedlimit %d%s",
+    if (g_conf.keyframe_ms < 1000) g_conf.keyframe_ms = 1000;
+    if (g_conf.keyframe_ms > 60000) g_conf.keyframe_ms = 60000;
+    /* Both pairs of view areas are declared to the iPhone (see build_cluster),
+     * the command thread selects the pair that fits the layout. Only the x of
+     * the small sport area depends on the car (596 or 580), taken from the
+     * layout that is active now. */
+    {
+        int off = 0, sp;
+        char name[24];
+        sp = read_skin(&off, name, sizeof(name));
+        if (sp) {
+            g_conf.sport[1][0] += 596 - off;
+            if (g_conf.sport[1][0] < 0) g_conf.sport[1][0] = 0;
+        }
+        plog("skin: %s, small stage offset %d: %s view areas", name, off, sp ? "sport" : "standard");
+        /* also where a tester without a shell can read it: the session log
+         * goes to the card's Logs folder */
+        slog("cockpit skin %s (small stage offset %d): %s view areas; standard large %d,%d %dx%d, "
+             "small %d,%d %dx%d; sport large %d,%d %dx%d, small %d,%d %dx%d",
+             name, off, sp ? "sport" : "standard",
+             g_conf.area[0][0], g_conf.area[0][1], g_conf.area[0][2], g_conf.area[0][3],
+             g_conf.area[1][0], g_conf.area[1][1], g_conf.area[1][2], g_conf.area[1][3],
+             g_conf.sport[0][0], g_conf.sport[0][1], g_conf.sport[0][2], g_conf.sport[0][3],
+             g_conf.sport[1][0], g_conf.sport[1][1], g_conf.sport[1][2], g_conf.sport[1][3]);
+    }
+    plog("conf: phys %dx%d mm, large %d,%d %dx%d, small %d,%d %dx%d, sport large %d,%d %dx%d, "
+         "sport small %d,%d %dx%d, zoom_invert %d, "
+         "zoom_restore %d, zoom_max %d, speedlimit %d, keyframe_ms %d%s%s%s",
          g_conf.phys_w, g_conf.phys_h, g_conf.area[0][0], g_conf.area[0][1], g_conf.area[0][2],
          g_conf.area[0][3], g_conf.area[1][0], g_conf.area[1][1], g_conf.area[1][2],
-         g_conf.area[1][3], g_conf.zoom_invert, g_conf.zoom_restore, g_conf.zoom_max,
-         g_conf.speedlimit, f ? "" : " (defaults)");
+         g_conf.area[1][3], g_conf.sport[0][0], g_conf.sport[0][1], g_conf.sport[0][2],
+         g_conf.sport[0][3], g_conf.sport[1][0], g_conf.sport[1][1], g_conf.sport[1][2],
+         g_conf.sport[1][3], g_conf.zoom_invert, g_conf.zoom_restore, g_conf.zoom_max,
+         g_conf.speedlimit, g_conf.keyframe_ms, g_conf.url[0] ? ", url " : "", g_conf.url,
+         f ? "" : " (defaults)");
 }
 
 /* Cockpit view as the mod's IMapClusterServiceWrapper last reported it:
@@ -640,23 +720,31 @@ static int current_view(void) {
 static void *build_cluster(int night) {
     void *d = ap.dict_new(NULL, 0, ap.key_cb, ap.val_cb);
     void *props = ap.arr_new(NULL, 1, ap.arr_cb);
-    void *areas = ap.arr_new(NULL, 2, ap.arr_cb);
+    void *areas = ap.arr_new(NULL, 4, ap.arr_cb);
     void *adj = ap.arr_new(NULL, 0, ap.arr_cb);
-    void *full, *center;
+    void *full, *center, *sfull, *scenter;
     int view;
     load_conf();
     view = current_view();
     if (view < 0) view = 1;             /* big-gauge area lies inside both views */
+    /* view areas 0 and 1: large map and big gauges; 2 and 3: the same two for
+     * a layout with the dial in the centre. The driver can change the layout
+     * at any time, updateViewArea then selects the other pair. */
+    view += 2 * read_skin(NULL, NULL, 0);
     full = view_area(g_conf.area[0][0], g_conf.area[0][1], g_conf.area[0][2], g_conf.area[0][3]);
     center = view_area(g_conf.area[1][0], g_conf.area[1][1], g_conf.area[1][2], g_conf.area[1][3]);
+    sfull = view_area(g_conf.sport[0][0], g_conf.sport[0][1], g_conf.sport[0][2], g_conf.sport[0][3]);
+    scenter = view_area(g_conf.sport[1][0], g_conf.sport[1][1], g_conf.sport[1][2], g_conf.sport[1][3]);
     void *sid = cstr(CL_STREAM);
     void *streams = sid ? stream_list(sid) : NULL;
     void *res = NULL;
 
-    if (!d || !props || !areas || !adj || !full || !center || !streams) goto out;
+    if (!d || !props || !areas || !adj || !full || !center || !sfull || !scenter || !streams) goto out;
     if (arr_add_str(props, "Instrument Cluster")) goto out;
     ap.arr_add(areas, full);
     ap.arr_add(areas, center);
+    ap.arr_add(areas, sfull);
+    ap.arr_add(areas, scenter);
     if (set_str(d, "name", "Instrument Cluster") || set_int(d, "type", ALT_TYPE) ||
         set_int(d, "maxFPS", 30) ||
         set_int(d, "widthPixels", CL_W) || set_int(d, "heightPixels", CL_H) ||
@@ -669,7 +757,8 @@ static void *build_cluster(int night) {
     res = d;
     d = NULL;
 out:
-    rel(d); rel(props); rel(areas); rel(adj); rel(full); rel(center); rel(sid); rel(streams);
+    rel(d); rel(props); rel(areas); rel(adj); rel(full); rel(center); rel(sfull); rel(scenter);
+    rel(sid); rel(streams);
     if (!res) plog("cluster display dictionary incomplete");
     return res;
 }
@@ -706,6 +795,7 @@ typedef struct receiver {
     volatile int stop;
     volatile int streaming;             /* first config or frame received */
     volatile int done;                  /* receive loop left, command thread ends */
+    volatile int kf_now;                /* receive path: picture chain broken, keyframe wanted */
     int paired;                         /* 1: ChaCha20-Poly1305, 0: AES-CTR */
     uint8_t key[32], iv[16];            /* AES uses key[0..15] + iv */
     uint64_t conn_id;
@@ -788,13 +878,41 @@ static void ka_detach(receiver_t *rx) {
 
 /* ------------------------------------------------- ring to cluster daemon */
 
+/* Milliseconds on a clock that only moves forward (the host test of the ring
+ * code brings its own). */
+static long ring_clock_ms(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (long)t.tv_sec * 1000L + t.tv_nsec / 1000000L;
+}
+
 /* Layout and name of mh2p-cluster's src/cluster_h264_shm.h. The daemon's
  * h264 child (capture=h264) maps it read-only, reads from ring offset 0 when
  * it starts and feeds whatever arrives to the NvMedia parser. Writer order:
- * data, then write_pos, then total_bytes (the reader polls total_bytes). */
+ * data, then write_pos, then total_bytes (the reader polls total_bytes).
+ *
+ * A decoder that starts therefore gets ring[0..write_pos) first. After a
+ * plain wrap that is the middle of the stream: frames without their
+ * reference, shown as blocks and streaks until the next keyframe. So the
+ * ring wraps at a keyframe: near its end (RING_ZONE) a keyframe is asked for,
+ * the rest of the lap is filled with filler NAL units, which a reader that
+ * follows skips, and the keyframe unit (SPS/PPS in front) goes to offset 0.
+ * ring[0..write_pos) then is "SPS/PPS, keyframe, everything since".
+ *
+ * Only near the ring end is that safe for a reader that follows. It knows
+ * nothing but write_pos: when the writer returns to offset 0 the reader has
+ * to see a write_pos below its own position once, or it takes the new lap
+ * for a continuation and reads it from the middle. From the end of the ring
+ * the new lap needs most of the ring before it gets there, so a reader that
+ * stalls (decoder starting or busy) has seconds. A first version put every
+ * keyframe at offset 0; on the A6 that gave blocks right after connecting,
+ * when keyframes follow each other within half a second, each lap is a few
+ * kilobytes and the decoder is just starting. */
 #define RING_NAME     "/cluster_h264_shm"
 #define RING_MAGIC    0x48323634u
 #define RING_SIZE     (2 * 1024 * 1024)
+#define RING_ZONE     (512 * 1024)      /* a keyframe this close to the end wraps the ring */
+#define RING_RESTART  (64 * 1024)       /* a new stream goes back to offset 0 from here on */
 
 typedef struct {
     volatile uint32_t magic;
@@ -805,6 +923,15 @@ typedef struct {
 } ring_t;
 
 static ring_t *g_ring;
+static unsigned long g_ring_keyed, g_ring_wraps;    /* per stream, receive thread only */
+static long g_ring_t0;                  /* ms: start of this lap */
+static unsigned long g_ring_units;      /* units written in this lap */
+/* For the session log, which reaches the SD card (testers have no shell): */
+#define HOOK_BUILD    "2026-11-20 skin3"
+static unsigned long g_ring_dropped;    /* units too large for the ring */
+static volatile int g_ring_head_key;    /* offset 0 holds a keyframe unit or a stream start */
+static long g_zone_t, g_zone_max;       /* ms: keyframe asked in RING_ZONE, longest wait for it */
+static volatile unsigned long g_kf_sent;    /* forceKeyFrame commands of this stream */
 
 static void ring_open(void) {
     void *p;
@@ -828,12 +955,23 @@ static void ring_open(void) {
          g_ring->total_bytes);
 }
 
-static void ring_write(const uint8_t *p, uint32_t n) {
+/* Appends. Returns 1 when the caller should ask for a keyframe: the write
+ * position entered RING_ZONE, so the next keyframe can wrap the ring, or the
+ * data reached the ring end without one and the ring start now is the middle
+ * of the stream. */
+static int ring_write(const uint8_t *p, uint32_t n) {
     uint32_t wp, first;
-    if (!g_ring || !n) return;
-    if (n > RING_SIZE / 2) { plog("ring: access unit of %u bytes dropped", n); return; }
+    int zone;
+    if (!g_ring || !n) return 0;
+    if (n > RING_SIZE / 2) {
+        plog("ring: access unit of %u bytes dropped", n);
+        g_ring_dropped++;
+        return 1;
+    }
     wp = g_ring->write_pos;
     first = RING_SIZE - wp;
+    zone = wp < RING_SIZE - RING_ZONE && wp + n >= RING_SIZE - RING_ZONE;
+    if (zone) g_zone_t = ring_clock_ms();
     if (n <= first) {
         memcpy(g_ring->ring + wp, p, n);
     } else {
@@ -844,6 +982,103 @@ static void ring_write(const uint8_t *p, uint32_t n) {
     g_ring->write_pos = (wp + n) % RING_SIZE;
     __sync_synchronize();
     g_ring->total_bytes += n;
+    g_ring_units++;
+    if (n >= first) {
+        g_ring_wraps++;
+        g_ring_head_key = 0;
+        if (g_ring_wraps <= 20) {
+            plog("ring: wrap %lu without a keyframe, %lu units in %ld ms this lap",
+                 g_ring_wraps, g_ring_units, ring_clock_ms() - g_ring_t0);
+            slog("111: ring wrapped without a keyframe (%lu units in %ld ms, keyframe asked %ld ms ago)",
+                 g_ring_units, ring_clock_ms() - g_ring_t0,
+                 g_zone_t ? ring_clock_ms() - g_zone_t : -1L);
+        }
+        g_zone_t = 0;
+        g_ring_t0 = ring_clock_ms();
+        g_ring_units = 0;
+        return 1;
+    }
+    return zone;
+}
+
+/* One H.264 filler data NAL unit (type 12) of n >= FILL_MIN bytes: start
+ * code, header, 0xff bytes, RBSP stop bit. Decoders discard it. */
+#define FILL_MIN      8
+#define FILL_MAX      1024
+
+static void fill_nal(uint8_t *d, uint32_t n) {
+    d[0] = 0; d[1] = 0; d[2] = 0; d[3] = 1; d[4] = 0x0c;
+    memset(d + 5, 0xff, n - 6);
+    d[n - 1] = 0x80;
+}
+
+/* Filler from ring offset pos to the ring end, in units small enough for any
+ * parser buffer; fewer than FILL_MIN bytes are zero bytes, which Annex B
+ * allows between NAL units. */
+static void ring_fill(uint32_t pos) {
+    while (pos < RING_SIZE) {
+        uint32_t left = RING_SIZE - pos, n = left > FILL_MAX ? FILL_MAX : left;
+        if (left < FILL_MIN) {
+            memset(g_ring->ring + pos, 0, left);
+            return;
+        }
+        if (left - n && left - n < FILL_MIN) n -= FILL_MIN;
+        fill_nal(g_ring->ring + pos, n);
+        pos += n;
+    }
+}
+
+/* A new stream: back to offset 0, so that a starting decoder reads this
+ * stream's config and first keyframe and nothing of the last one. A reader of
+ * the last stream has been idle for seconds and stands at write_pos; below
+ * RING_RESTART that is too close to offset 0, the stream is appended. */
+static void ring_restart(void) {
+    uint32_t wp;
+    g_ring_keyed = g_ring_wraps = 0;
+    g_ring_units = 0;
+    g_ring_dropped = 0;
+    g_zone_t = g_zone_max = 0;
+    g_kf_sent = 0;
+    g_ring_t0 = ring_clock_ms();
+    if (!g_ring) return;
+    wp = g_ring->write_pos;
+    if (wp < RING_RESTART) return;
+    ring_fill(wp);
+    __sync_synchronize();
+    g_ring->write_pos = 0;
+    g_ring_head_key = 1;
+    __sync_synchronize();
+    g_ring->total_bytes += RING_SIZE - wp;
+    plog("ring: new stream starts at offset 0 (was at %u)", wp);
+}
+
+/* A keyframe access unit (with its SPS/PPS in front): inside RING_ZONE it
+ * wraps the ring (see above), anywhere else it is appended. Returns 1 when
+ * the caller should ask for another keyframe (see ring_write). */
+static int ring_write_key(const uint8_t *p, uint32_t n) {
+    uint32_t wp;
+    if (!g_ring || !n) return 0;
+    wp = g_ring->write_pos;
+    if (wp < RING_SIZE - RING_ZONE || n > RING_SIZE / 2) return ring_write(p, n);
+    ring_fill(wp);
+    memcpy(g_ring->ring, p, n);
+    __sync_synchronize();
+    g_ring->write_pos = n;
+    __sync_synchronize();
+    g_ring->total_bytes += (RING_SIZE - wp) + n;
+    g_ring_keyed++;
+    g_ring_head_key = 1;
+    if (g_zone_t) {
+        long w = ring_clock_ms() - g_zone_t;
+        if (w > g_zone_max) g_zone_max = w;
+        g_zone_t = 0;
+    }
+    if (g_ring_keyed <= 20)
+        plog("ring: wrapped at a keyframe (%u bytes) from %u, %lu units in %ld ms this lap",
+             n, wp, g_ring_units, ring_clock_ms() - g_ring_t0);
+    g_ring_t0 = ring_clock_ms();
+    g_ring_units = 0;
+    return 0;
 }
 
 static void ring_active(int on) {
@@ -882,8 +1117,9 @@ static int send_cmd(void *session, const char *type, const char *url) {
     return send_cmd_int(session, type, url, NULL, 0, 0);
 }
 
-/* Shows view area 0 (large map) or 1 (big gauges); the areas are declared in
- * /info, the iPhone moves its cards into the selected safe rectangle. */
+/* Shows view area 0 (large map) or 1 (big gauges), 2 or 3 for the same two
+ * in a layout with the dial in the centre; the areas are declared in /info,
+ * the iPhone moves its cards into the selected safe rectangle. */
 static int send_view_area(void *session, int index) {
     void *cmd = ap.dict_new(NULL, 0, ap.key_cb, ap.val_cb);
     void *params = ap.dict_new(NULL, 0, ap.key_cb, ap.val_cb);
@@ -894,7 +1130,8 @@ static int send_view_area(void *session, int index) {
         !set_val(params, "adjacentViewAreas", adj) &&
         !set_str(cmd, "type", "updateViewArea") && !set_val(cmd, "params", params))
         rc = ap.send_cmd(session, cmd, (void *)cmd_done, (void *)"updateViewArea");
-    plog("command updateViewArea %d (%s) sent: rc=%d", index, index ? "big gauges" : "large map", rc);
+    plog("command updateViewArea %d (%s%s) sent: rc=%d", index, index & 1 ? "big gauges" : "large map",
+         index >= 2 ? ", sport" : "", rc);
     rel(adj);
     rel(params);
     rel(cmd);
@@ -984,13 +1221,17 @@ static int ctl_stamp(long *mtime, long *size) {
  * path. Keyframes: the iPhone sends one only when asked, and the cluster
  * daemon starts a fresh decoder on every Java 'start'. Any change of
  * /tmp/cluster_ctl (Java writes a command, the daemon empties the file after
- * acting on it, polling every 2 s) asks for keyframes 2.5 s and 4.5 s later,
- * when the new decoder is up. A slow periodic keyframe covers the rest. */
+ * acting on it, polling every 2 s) asks for a keyframe at once and 2.5 s and
+ * 4.5 s later, so the new decoder gets a fresh one soon after it comes up.
+ * The receive path asks for one (kf_now) when it lost a frame, when the ring
+ * is about to wrap or has wrapped without one, and a periodic one
+ * (keyframe_ms) bounds how long any other damage stays on screen. */
 static void *cmd_main(void *arg) {
     receiver_t *rx = (receiver_t *)arg;
     long mt = 0, sz = 0, nmt, nsz;
-    int have_ctl, tick = 0, kf1 = -1, kf2 = -1, last_kf = 0, ui_sent = 0;
-    int view = -1, zoom = 0, steps;
+    int have_ctl, tick = 0, kf1 = -1, kf2 = -1, last_kf = 0, ui_sent = 0, kf_asked = 0, ctl_logged = 0;
+    long ui_mt = 0, ui_sz = -1;
+    int view = -1, sport = -1, zoom = 0, steps;
     int net = 0, saved_net = 0, restore = 0, restore_at = -1, zoom_tick = -1, lim;
     long zoom_pos = -1;
 
@@ -1002,9 +1243,11 @@ static void *cmd_main(void *arg) {
         tick++;
         if (!rx->streaming) continue;
         if (!ui_sent) {
-            send_cmd(rx->session, "showUI", g_conf.speedlimit ? CL_URL "yes" : CL_URL "no");
+            send_cmd(rx->session, "showUI", g_conf.url[0] ? g_conf.url :
+                     g_conf.speedlimit ? CL_URL "yes" : CL_URL "no");
             usleep(200 * 1000);
             send_cmd(rx->session, "forceKeyFrame", NULL);
+            g_kf_sent++;
             ui_sent = 1;
             last_kf = tick;
             {
@@ -1047,11 +1290,19 @@ static void *cmd_main(void *arg) {
             restore_at = restore ? tick + TICKS(ZOOM_RESTORE_GAP_MS) : -1;
             if (!restore) slog("zoom: %d saved step(s) restored", saved_net);
         }
-        /* cockpit view -> view area */
+        /* cockpit view and layout -> view area */
         if (tick % TICKS(250) == 0) {
-            int v = current_view();
-            if (v >= 0 && v != view) {
-                view = v;
+            int v = current_view(), sp = read_skin(NULL, NULL, 0);
+            if (sp != sport) {
+                if (sport >= 0) {
+                    char name[24];
+                    read_skin(NULL, name, sizeof(name));
+                    slog("cockpit skin now %s: %s view areas", name, sp ? "sport" : "standard");
+                }
+                sport = sp;
+            }
+            if (v >= 0 && v + 2 * sp != view) {
+                view = v + 2 * sp;
                 send_view_area(rx->session, view);
             }
         }
@@ -1080,10 +1331,43 @@ static void *cmd_main(void *arg) {
             zoom_store(net);
             saved_net = net;
         }
+        if (rx->kf_now && tick - last_kf >= TICKS(500)) {
+            rx->kf_now = 0;
+            send_cmd_int(rx->session, "forceKeyFrame", NULL, NULL, 0, kf_asked++ >= 5);
+            g_kf_sent++;
+            last_kf = tick;
+        }
+        if (tick % TICKS(1000) == 0) {
+            struct stat ust;
+            if (stat(SHOWUI_TMP, &ust) == 0 &&
+                ((long)ust.st_mtime != ui_mt || (long)ust.st_size != ui_sz)) {
+                FILE *u = fopen(SHOWUI_TMP, "r");
+                char url[160];
+                ui_mt = (long)ust.st_mtime;
+                ui_sz = (long)ust.st_size;
+                url[0] = 0;
+                if (u) {
+                    if (!fgets(url, sizeof(url), u)) url[0] = 0;
+                    fclose(u);
+                }
+                chomp(url);
+                if (url[0]) {
+                    plog("showUI from %s", SHOWUI_TMP);
+                    send_cmd(rx->session, "showUI", url);
+                    rx->kf_now = 1;
+                }
+            }
+        }
         if (tick % TICKS(250) != 0) continue;
         if (ctl_stamp(&nmt, &nsz) == 0) {
             if (!have_ctl || nmt != mt || nsz != sz) {
                 plog("daemon command file changed (size %ld), keyframes follow", nsz);
+                /* a command with content can start a decoder, which reads the ring from offset 0 */
+                if (nsz > 0 && ctl_logged++ < 30)
+                    slog("111: cockpit command: ring at %u KB, lap %s",
+                         g_ring ? g_ring->write_pos / 1024 : 0,
+                         g_ring_head_key ? "starts with a keyframe" : "starts WITHOUT a keyframe");
+                rx->kf_now = 1;
                 kf1 = tick + TICKS(2500);
                 kf2 = tick + TICKS(4500);
             }
@@ -1091,10 +1375,11 @@ static void *cmd_main(void *arg) {
             mt = nmt;
             sz = nsz;
         }
-        if ((kf1 >= 0 && tick >= kf1) || (kf2 >= 0 && tick >= kf2) || tick - last_kf >= TICKS(10000)) {
+        if ((kf1 >= 0 && tick >= kf1) || (kf2 >= 0 && tick >= kf2) || tick - last_kf >= TICKS(g_conf.keyframe_ms)) {
             if (kf1 >= 0 && tick >= kf1) kf1 = -1;
             else if (kf2 >= 0 && tick >= kf2) kf2 = -1;
-            send_cmd(rx->session, "forceKeyFrame", NULL);
+            send_cmd_int(rx->session, "forceKeyFrame", NULL, NULL, 0, kf_asked++ >= 5);
+            g_kf_sent++;
             last_kf = tick;
         }
     }
@@ -1157,8 +1442,11 @@ static int out_add(vout_t *o, const uint8_t *p, uint32_t n) {
     return 0;
 }
 
-static void out_flush(vout_t *o) {
-    ring_write(o->buf, o->len);
+/* kind: 1 the unit starts with SPS/PPS and holds a keyframe, 0 another
+ * picture, -1 config only. Returns 1 when a keyframe is wanted (see
+ * ring_write). */
+static int out_flush(vout_t *o, int kind) {
+    int lost = kind > 0 ? ring_write_key(o->buf, o->len) : ring_write(o->buf, o->len);
     if (o->f && !o->full) {
         if (o->written + (long)o->len > VIDEO_LIMIT) {
             o->full = 1;
@@ -1169,6 +1457,7 @@ static void out_flush(vout_t *o) {
         }
     }
     o->len = 0;
+    return lost;
 }
 
 /* avcC -> SPS/PPS with start codes into o->cfg. Returns NAL length size,
@@ -1249,10 +1538,21 @@ static void receive(receiver_t *rx, int fd) {
     char hex[160];
     vout_t out;
     struct timespec t0, t1;
+    /* statistics for the session log */
+    unsigned long long bytes = 0;
+    unsigned long sec_bytes = 0, peak = 0, pauses = 0, cfgs = 0;
+    uint32_t unit_max = 0;
+    long now, last_rx = 0, sec_t0 = 0, last_idr = 0, idr_gap = 0, pause_max = 0;
+    /* a line per minute for ten minutes, then one every ten: a session that
+     * ends with the ignition never writes its closing lines */
+    unsigned long long iv_bytes = 0;
+    unsigned long iv_frames = 0, iv_idr = 0, iv_peak = 0;
+    long st_t0 = 0, st_next = 60000;
 
     memset(&out, 0, sizeof(out));
     ring_open();
     ring_active(1);
+    ring_restart();                    /* whatever is there is not this stream's */
     if (access(REC_FLAG, F_OK) == 0) {
         out.f = fopen(VIDEO_PATH, "wb");
         plog("recording to %s %s", VIDEO_PATH, out.f ? "on" : "failed");
@@ -1307,17 +1607,49 @@ static void receive(receiver_t *rx, int fd) {
             if (l) {
                 ls = l;
                 out.len = 0;
-                if (out_add(&out, out.cfg, out.cfg_len) == 0) out_flush(&out);
+                if (out_add(&out, out.cfg, out.cfg_len) == 0 && out_flush(&out, -1)) rx->kf_now = 1;
             }
             plog("CONFIG %dx%d size=%u avcC=%s lengthSize=%d data=%s%s",
                  (int)(w + 0.5f), (int)(h + 0.5f), size, l ? "yes" : "NO", ls, hex,
                  size > 64 ? "..." : "");
+            if (cfgs++ < 5 && size >= 4)
+                slog("111: stream %dx%d, H.264 profile %u level %u (hook %s)",
+                     (int)(w + 0.5f), (int)(h + 0.5f), body[1], body[3], HOOK_BUILD);
             rx->streaming = 1;
         } else if (op == 0) {                 /* encrypted access unit */
             int types = 0, opened = 1;
             uint32_t plain = size;
             uint8_t *au = body;
             frames++;
+            now = ring_clock_ms();
+            if (last_rx && now - last_rx >= 1000) {
+                pauses++;
+                if (now - last_rx > pause_max) pause_max = now - last_rx;
+                if (pauses <= 10) slog("111: no video data for %ld ms", now - last_rx);
+            }
+            last_rx = now;
+            if (!sec_t0) sec_t0 = now;
+            if (now - sec_t0 >= 1000) {
+                if (sec_bytes > peak) peak = sec_bytes;
+                if (sec_bytes > iv_peak) iv_peak = sec_bytes;
+                sec_bytes = 0;
+                sec_t0 = now;
+            }
+            if (!st_t0) st_t0 = now;
+            if (now - st_t0 >= st_next) {
+                slog("111: minute %ld: %lu pictures, %lu keyframes, %lu KB, peak %lu KB/s; so far "
+                     "%lu keyframes asked, ring %lu wraps at a keyframe, %lu without, %lu pauses",
+                     st_next / 60000, iv_frames, iv_idr, (unsigned long)(iv_bytes >> 10),
+                     iv_peak / 1024, g_kf_sent, g_ring_keyed, g_ring_wraps, pauses);
+                iv_frames = iv_idr = iv_peak = 0;
+                iv_bytes = 0;
+                st_next += st_next < 600000 ? 60000 : 600000;
+            }
+            iv_frames++;
+            iv_bytes += size;
+            sec_bytes += size;
+            bytes += size;
+            if (size > unit_max) unit_max = size;
             if (rx->paired) {
                 uint8_t nb[8];
                 int i, rc = -1;
@@ -1332,6 +1664,7 @@ static void receive(receiver_t *rx, int fd) {
                 if (rc != 0) {
                     opened = 0;
                     authfail++;
+                    rx->kf_now = 1;           /* the frames after it lack their reference */
                     if (authfail <= 5) plog("frame %lu size=%u authentication failed rc=%d", frames, size, rc);
                 }
             } else {
@@ -1342,15 +1675,23 @@ static void receive(receiver_t *rx, int fd) {
                 /* counted above */
             } else if (types < 0) {
                 bad++;
+                rx->kf_now = 1;
                 if (bad <= 5) {
                     hexline(hex, sizeof(hex), au, plain < 24 ? plain : 24);
                     plog("frame %lu size=%u does NOT parse as AVCC: %s", frames, size, hex);
                 }
             } else {
                 int is_idr = (types & (1 << 5)) != 0;
-                if (is_idr) idr++;
-                if (build_access_unit(&out, au, plain, ls, is_idr) == 0) {
-                    out_flush(&out);
+                if (is_idr) {
+                    idr++;
+                    iv_idr++;
+                    if (last_idr && now - last_idr > idr_gap) idr_gap = now - last_idr;
+                    last_idr = now;
+                }
+                if (build_access_unit(&out, au, plain, ls, is_idr) != 0) {
+                    rx->kf_now = 1;           /* out of memory: this frame is missing */
+                } else {
+                    if (out_flush(&out, is_idr && out.cfg_len)) rx->kf_now = 1;
                     if (!video_on) {
                         video_on = 1;
                         video_flag(1);
@@ -1379,9 +1720,17 @@ static void receive(receiver_t *rx, int fd) {
 done:
     ring_active(0);
     video_flag(0);
-    plog("receiver summary: %lu frames, %lu IDR, %lu bad, %lu auth failed, %lu other",
-         frames, idr, bad, authfail, other);
+    plog("receiver summary: %lu frames, %lu IDR, %lu bad, %lu auth failed, %lu other, "
+         "%lu ring wraps at a keyframe, %lu without",
+         frames, idr, bad, authfail, other, g_ring_keyed, g_ring_wraps);
     slog("111: stream ended, %lu frames, %lu bad, %lu auth failed", frames, bad, authfail);
+    if (sec_bytes > peak) peak = sec_bytes;
+    slog("111: video: %lu keyframes (%lu asked, longest gap %ld ms), %lu MB, peak %lu KB/s, "
+         "largest picture %u KB, %lu pauses over 1 s (longest %ld ms)",
+         idr, g_kf_sent, idr_gap, (unsigned long)(bytes >> 20), peak / 1024, unit_max / 1024,
+         pauses, pause_max);
+    slog("111: ring: %lu wraps at a keyframe (longest wait %ld ms), %lu without, %lu pictures dropped",
+         g_ring_keyed, g_zone_max, g_ring_wraps, g_ring_dropped);
     if (out.f) fclose(out.f);
     free(out.buf);
     free(body);
