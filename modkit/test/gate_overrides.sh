@@ -75,9 +75,9 @@ mksh /mnt/app/eso/bin/apps/dio_manager 2>/dev/null | grep -q "PRELOAD=$AC/altscr
 out=$(mksh "$MOD_PATH/install.sh" 2>&1); echo "$out" | grep -q "skip identical:    $AC/altscreen.so" && echo "$out" | grep -q 'carplay altscreen: ON' && res "altscreen: re-run idempotent" PASS || res "altscreen: re-run idempotent" FAIL
 echo "=== altscreen_conf.txt: tuning file from the card ==="
 ACF=$AC/altscreen.conf; ACS="$SCR/fakesd/Mods/ClusterIntegration/altscreen_conf.txt"
-printf '# Performance view\r\nlarge=500,155,940,370  # less high\r\nphys=384,144\r\nurl=maps:/car\r\nsmall=1,2,x,4\r\nPATH=/evil\r\nsport_small=54,155,480,370\r\nzoom_max=12\r\n' > "$ACS"
+printf '# Performance view\r\nlarge=500,155,940,370  # less high\r\nphys=384,144\r\nurl=maps:/car\r\nsmall=1,2,x,4\r\nPATH=/evil\r\nsport_small=54,155,480,370\r\nzoom_max=12\r\nzoom_per_view=0\r\n' > "$ACS"
 out=$(mksh "$MOD_PATH/install.sh" 2>&1)
-[[ "$(cat $ACF)" == $'large=500,155,940,370\nphys=384,144\nsport_small=54,155,480,370\nzoom_max=12' ]] && echo "$out" | grep -q 'altscreen conf:    WARN' && echo "$out" | grep -q 'altscreen conf:    large=500,155,940,370' && res "altscreen conf: only valid lines installed (CR, comments, unknown keys dropped)" PASS || res "altscreen conf: only valid lines installed" FAIL
+[[ "$(cat $ACF)" == $'large=500,155,940,370\nphys=384,144\nsport_small=54,155,480,370\nzoom_max=12\nzoom_per_view=0' ]] && echo "$out" | grep -q 'altscreen conf:    WARN' && echo "$out" | grep -q 'altscreen conf:    large=500,155,940,370' && res "altscreen conf: only valid lines installed (CR, comments, unknown keys dropped)" PASS || res "altscreen conf: only valid lines installed" FAIL
 grep -q "add $ACF" "$MOD_PATH/Backup/manifest.txt" && res "altscreen conf: recorded as add" PASS || res "altscreen conf: recorded as add" FAIL
 out=$(mksh "$MOD_PATH/install.sh" 2>&1); echo "$out" | grep -q "skip identical:    $ACF" && res "altscreen conf: unchanged file skipped by content" PASS || res "altscreen conf: unchanged file skipped" FAIL
 printf 'large=500,155,940,350\n' > "$ACS"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)

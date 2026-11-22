@@ -36,6 +36,9 @@
 #zoom_restore=1
 #zoom_max=10
 #
+# One zoom per cockpit view, large map and big gauges (1), or one for both (0).
+#zoom_per_view=1
+#
 # Ask the iPhone for its speed limit sign on the cockpit map (1/0).
 #speedlimit=1
 #

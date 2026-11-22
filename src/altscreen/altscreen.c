@@ -559,9 +559,10 @@ static int add_common(void *d, int night) {
 /* Cluster geometry, overridable without a rebuild: /tmp/altscreen.conf, else
  * cluster/altscreen.conf, lines "key=a,b,..." (phys=W,H in mm;
  * large=x,y,w,h and small=x,y,w,h safe areas; zoom_invert=0/1, default 1;
- * zoom_restore=0/1, default 1, and zoom_max=N, default 10, see ZOOM_SAVE;
- * speedlimit=0/1, default 1: the phone is asked to draw its speed limit sign
- * on the map, showSpeedLimit in the Maps cluster URL).
+ * zoom_restore=0/1, default 1, zoom_per_view=0/1, default 1, and
+ * zoom_max=N, default 10, see ZOOM_SAVE; speedlimit=0/1, default 1: the
+ * phone is asked to draw its speed limit sign on the map, showSpeedLimit in
+ * the Maps cluster URL).
  *
  * Safe rectangles from the calibration pattern (cluster capture=test,
  * photographed in both cockpit views, 0.725 photo px per stream px):
@@ -580,7 +581,7 @@ static struct {
     int area[2][4];                     /* 0 = large map view, 1 = big gauges */
     int sport[2][4];                    /* the same two for a cockpit with the dial in the centre */
     int zoom_invert;
-    int zoom_restore, zoom_max;
+    int zoom_restore, zoom_per_view, zoom_max;
     int speedlimit;
     int keyframe_ms;
     char url[160];                      /* showUI URL for experiments; empty = CL_URL */
@@ -630,6 +631,7 @@ static void load_conf(void) {
     g_conf.area[1][0] = 624; g_conf.area[1][1] = 158; g_conf.area[1][2] = 672; g_conf.area[1][3] = 400;
     g_conf.zoom_invert = 1;             /* A6 C8: positive roller steps zoom out */
     g_conf.zoom_restore = 1;
+    g_conf.zoom_per_view = 1;
     g_conf.zoom_max = 10;
     g_conf.speedlimit = 1;              /* iOS parses it; no sign seen on the A6 test car yet */
     g_conf.keyframe_ms = 3000;          /* a broken picture heals within this time */
@@ -655,6 +657,7 @@ static void load_conf(void) {
             else if (!strcmp(line, "sport_small")) parse_ints(eq + 1, g_conf.sport[1], 4);
             else if (!strcmp(line, "zoom_invert")) g_conf.zoom_invert = atoi(eq + 1);
             else if (!strcmp(line, "zoom_restore")) g_conf.zoom_restore = atoi(eq + 1);
+            else if (!strcmp(line, "zoom_per_view")) g_conf.zoom_per_view = atoi(eq + 1);
             else if (!strcmp(line, "zoom_max")) g_conf.zoom_max = atoi(eq + 1);
             else if (!strcmp(line, "speedlimit")) g_conf.speedlimit = atoi(eq + 1) ? 1 : 0;
             else if (!strcmp(line, "keyframe_ms")) g_conf.keyframe_ms = atoi(eq + 1);
@@ -694,12 +697,13 @@ static void load_conf(void) {
     }
     plog("conf: phys %dx%d mm, large %d,%d %dx%d, small %d,%d %dx%d, sport large %d,%d %dx%d, "
          "sport small %d,%d %dx%d, zoom_invert %d, "
-         "zoom_restore %d, zoom_max %d, speedlimit %d, keyframe_ms %d%s%s%s",
+         "zoom_restore %d, zoom_per_view %d, zoom_max %d, speedlimit %d, keyframe_ms %d%s%s%s",
          g_conf.phys_w, g_conf.phys_h, g_conf.area[0][0], g_conf.area[0][1], g_conf.area[0][2],
          g_conf.area[0][3], g_conf.area[1][0], g_conf.area[1][1], g_conf.area[1][2],
          g_conf.area[1][3], g_conf.sport[0][0], g_conf.sport[0][1], g_conf.sport[0][2],
          g_conf.sport[0][3], g_conf.sport[1][0], g_conf.sport[1][1], g_conf.sport[1][2],
-         g_conf.sport[1][3], g_conf.zoom_invert, g_conf.zoom_restore, g_conf.zoom_max,
+         g_conf.sport[1][3], g_conf.zoom_invert, g_conf.zoom_restore, g_conf.zoom_per_view,
+         g_conf.zoom_max,
          g_conf.speedlimit, g_conf.keyframe_ms, g_conf.url[0] ? ", url " : "", g_conf.url,
          f ? "" : " (defaults)");
 }
@@ -785,6 +789,7 @@ static pthread_mutex_t g_mtx = PTHREAD_MUTEX_INITIALIZER;
 static void *g_ctrl_session;            /* session whose control SETUP got altScreen */
 static int g_session_gen;               /* counts those control SETUPs */
 static int g_zoom_gen;                  /* session whose saved zoom was restored */
+static int g_zoom_net;                  /* steps the phone's zoom is off its default, this session */
 static int g_night_dio = -1;            /* last night mode dio_manager set, -1 = none yet */
 static void *g_night_session;           /* the session it set it for */
 static int g_night_advert = -1;         /* night mode the cluster display was advertised with */
@@ -927,7 +932,7 @@ static unsigned long g_ring_keyed, g_ring_wraps;    /* per stream, receive threa
 static long g_ring_t0;                  /* ms: start of this lap */
 static unsigned long g_ring_units;      /* units written in this lap */
 /* For the session log, which reaches the SD card (testers have no shell): */
-#define HOOK_BUILD    "2026-11-20 skin3"
+#define HOOK_BUILD    "2026-11-21 zoom1"
 static unsigned long g_ring_dropped;    /* units too large for the ring */
 static volatile int g_ring_head_key;    /* offset 0 holds a keyframe unit or a stream start */
 static long g_zone_t, g_zone_max;       /* ms: keyframe asked in RING_ZONE, longest wait for it */
@@ -1042,7 +1047,12 @@ static void ring_restart(void) {
     g_ring_t0 = ring_clock_ms();
     if (!g_ring) return;
     wp = g_ring->write_pos;
-    if (wp < RING_RESTART) return;
+    if (wp < RING_RESTART) {
+        /* nothing written since the ring was created: offset 0 will hold
+         * this stream's start */
+        if (!wp && !g_ring->total_bytes) g_ring_head_key = 1;
+        return;
+    }
     ring_fill(wp);
     __sync_synchronize();
     g_ring->write_pos = 0;
@@ -1173,40 +1183,70 @@ static int take_zoom_steps(long *pos) {
  * app's default. So the hook counts the steps it sent (in roller direction,
  * before zoom_invert) and keeps the net count across restarts: next to the
  * session log, written 3 s after the last step. The count stops at +-zoom_max,
- * so turning the roller past the app's own limit does not drift it far. When
- * the first stream of the next CarPlay session runs, the same steps are sent
- * again (zoom_restore=0 off); a later stream of the same session continues
- * from the saved count without sending them, so they never add up twice.
- * The replay waits until the app's map is up and spaces the steps like a
- * roller turned by hand: in the car, a burst of steps 50 ms apart, 2 s after
- * video start, left the map more zoomed in than it was saved. */
+ * so turning the roller past the app's own limit does not drift it far.
+ * There is one count per cockpit view (large map, big gauges; zoom_per_view=0
+ * shares one): the file holds "<large> <small>", and the roller moves the
+ * count of the view on screen. A follower then walks the phone's zoom to the
+ * count of the current view: when a CarPlay session's video runs (the first
+ * stream replays the saved count; later streams of the same session carry on
+ * from where the phone is, g_zoom_net) and after every view change
+ * (zoom_restore=0 off). It waits until the app's map is up and spaces the
+ * steps like a roller turned by hand: in the car, a burst of steps 50 ms
+ * apart, 2 s after video start, left the map more zoomed in than it was
+ * saved. */
 #define ZOOM_SAVE     "/mnt/ota/modkit/altscreen_zoom.txt"
 #define ZOOM_SAVE_TMP ZOOM_SAVE ".tmp"
 #define ZOOM_RESTORE_DELAY_MS 6000      /* after the first frames */
 #define ZOOM_RESTORE_GAP_MS   600       /* between two replayed steps */
 
-static int zoom_load(void) {
-    char line[32];
-    int v = 0;
-    FILE *f = fopen(ZOOM_SAVE, "r");
-    if (!f) return 0;
-    if (fgets(line, sizeof(line), f)) v = atoi(line);
-    fclose(f);
+static int zoom_clamp(int v) {
     if (v > g_conf.zoom_max) v = g_conf.zoom_max;
     if (v < -g_conf.zoom_max) v = -g_conf.zoom_max;
     return v;
 }
 
-static void zoom_store(int v) {
+/* A single number (the format before per-view counts) applies to both. */
+static void zoom_load(int *vnet) {
+    char line[32];
+    int n;
+    FILE *f = fopen(ZOOM_SAVE, "r");
+    vnet[0] = vnet[1] = 0;
+    if (!f) return;
+    if (fgets(line, sizeof(line), f)) {
+        n = sscanf(line, "%d %d", &vnet[0], &vnet[1]);
+        if (n == 1) vnet[1] = vnet[0];
+        else if (n != 2) vnet[0] = vnet[1] = 0;
+    }
+    fclose(f);
+    vnet[0] = zoom_clamp(vnet[0]);
+    vnet[1] = zoom_clamp(vnet[1]);
+}
+
+static void zoom_store(const int *vnet) {
     FILE *f = fopen(ZOOM_SAVE_TMP, "w");
     if (!f) { plog("zoom: %s not writable (errno %d)", ZOOM_SAVE_TMP, errno); return; }
-    fprintf(f, "%d\n", v);
+    fprintf(f, "%d %d\n", vnet[0], vnet[1]);
     if (fclose(f) != 0 || rename(ZOOM_SAVE_TMP, ZOOM_SAVE) != 0) {
-        plog("zoom: saving %d failed (errno %d)", v, errno);
+        plog("zoom: saving %d %d failed (errno %d)", vnet[0], vnet[1], errno);
         return;
     }
-    plog("zoom: net %d step(s) saved", v);
+    plog("zoom: net %d / %d step(s) saved (large / big gauges)", vnet[0], vnet[1]);
 }
+
+/* One changeMapZoomLevel in roller direction s (luka-dev: zoomDirection 1 for
+ * positive steps, 0 for negative, before zoom_invert). */
+static int send_zoom_step(void *session, int s) {
+    int dir = s > 0 ? 1 : 0;
+    if (g_conf.zoom_invert) dir = !dir;
+    return send_cmd_int(session, "changeMapZoomLevel", NULL, "zoomDirection", dir, 1);
+}
+
+static void zoom_net_set(int net) {
+    pthread_mutex_lock(&g_mtx);
+    g_zoom_net = net;
+    pthread_mutex_unlock(&g_mtx);
+}
+
 
 static int ctl_stamp(long *mtime, long *size) {
     struct stat st;
@@ -1231,8 +1271,9 @@ static void *cmd_main(void *arg) {
     long mt = 0, sz = 0, nmt, nsz;
     int have_ctl, tick = 0, kf1 = -1, kf2 = -1, last_kf = 0, ui_sent = 0, kf_asked = 0, ctl_logged = 0;
     long ui_mt = 0, ui_sz = -1;
-    int view = -1, sport = -1, zoom = 0, steps;
-    int net = 0, saved_net = 0, restore = 0, restore_at = -1, zoom_tick = -1, lim;
+    int view = -1, cv = -1, sport = -1, zoom = 0, steps;   /* view area index; cockpit view 0/1 */
+    int vnet[2] = { 0, 0 }, saved[2] = { 0, 0 }, cur, net = 0, lim;
+    int follow_at = -1, following = 0, restoring = 0, zoom_tick = -1;
     long zoom_pos = -1;
 
     have_ctl = (ctl_stamp(&mt, &sz) == 0);
@@ -1263,35 +1304,25 @@ static void *cmd_main(void *arg) {
                 }
             }
             if (g_conf.zoom_restore) {
-                int first;
                 pthread_mutex_lock(&g_mtx);
-                first = (g_zoom_gen != g_session_gen);
+                if (g_zoom_gen != g_session_gen) g_zoom_net = 0;   /* new session: app default */
                 g_zoom_gen = g_session_gen;
+                net = g_zoom_net;
                 pthread_mutex_unlock(&g_mtx);
-                saved_net = zoom_load();
-                if (!first) {
-                    net = saved_net;    /* another 111 stream of the same CarPlay session */
-                    plog("zoom: same session, %d saved step(s) not sent again", saved_net);
-                } else if (saved_net) {
-                    restore = saved_net;
-                    restore_at = tick + TICKS(ZOOM_RESTORE_DELAY_MS);   /* once the scene is up */
-                }
+                zoom_load(vnet);
+                if (!g_conf.zoom_per_view) vnet[1] = vnet[0];
+                saved[0] = vnet[0];
+                saved[1] = vnet[1];
+                restoring = 1;
+                follow_at = tick + TICKS(ZOOM_RESTORE_DELAY_MS);   /* once the scene is up */
+                plog("zoom: saved %d / %d step(s), phone at %d", vnet[0], vnet[1], net);
             }
             continue;
         }
         lim = g_conf.zoom_max > 10 ? g_conf.zoom_max : 10;
-        if (restore_at >= 0 && tick >= restore_at) {
-            int s = restore > 0 ? 1 : -1;
-            if (restore == saved_net) plog("zoom: restoring %d saved step(s)", restore);
-            zoom += s;
-            if (zoom > lim) zoom = lim;
-            if (zoom < -lim) zoom = -lim;
-            restore -= s;
-            restore_at = restore ? tick + TICKS(ZOOM_RESTORE_GAP_MS) : -1;
-            if (!restore) slog("zoom: %d saved step(s) restored", saved_net);
-        }
-        /* cockpit view and layout -> view area */
-        if (tick % TICKS(250) == 0) {
+        /* cockpit view and layout -> view area (every tick until the view is
+         * known: the zoom count belongs to the view on screen) */
+        if (tick % TICKS(250) == 0 || cv < 0) {
             int v = current_view(), sp = read_skin(NULL, NULL, 0);
             if (sp != sport) {
                 if (sport >= 0) {
@@ -1302,12 +1333,16 @@ static void *cmd_main(void *arg) {
                 sport = sp;
             }
             if (v >= 0 && v + 2 * sp != view) {
+                cv = v;
                 view = v + 2 * sp;
                 send_view_area(rx->session, view);
+                if (follow_at >= 0 && follow_at < tick + TICKS(ZOOM_RESTORE_GAP_MS))
+                    follow_at = tick + TICKS(ZOOM_RESTORE_GAP_MS);
             }
         }
-        /* steering-wheel zoom: one changeMapZoomLevel per step, 50 ms apart
-         * (luka-dev: zoomDirection 1 for positive steps, 0 for negative) */
+        cur = g_conf.zoom_per_view ? (cv >= 0 ? cv : 1) : 0;
+        /* steering-wheel zoom: one changeMapZoomLevel per step, 50 ms apart;
+         * it moves the phone and the count of the view on screen alike */
         steps = take_zoom_steps(&zoom_pos);
         if (steps) {
             plog("zoom: %d step(s) from the wheel", steps);
@@ -1316,20 +1351,46 @@ static void *cmd_main(void *arg) {
             if (zoom < -lim) zoom = -lim;
         }
         if (zoom) {
-            int dir = zoom > 0 ? 1 : 0;
             int s = zoom > 0 ? 1 : -1;
-            if (g_conf.zoom_invert) dir = !dir;
-            if (send_cmd_int(rx->session, "changeMapZoomLevel", NULL, "zoomDirection", dir, 1) == 0 &&
-                net + s <= g_conf.zoom_max && net + s >= -g_conf.zoom_max)
-                net += s;
+            if (send_zoom_step(rx->session, s) == 0) {
+                if (zoom_clamp(net + s) == net + s) net += s;
+                if (zoom_clamp(vnet[cur] + s) == vnet[cur] + s) vnet[cur] += s;
+                if (!g_conf.zoom_per_view) vnet[1] = vnet[0];
+                zoom_net_set(net);
+            }
             zoom -= s;
             zoom_tick = tick;
+            if (follow_at >= 0 && follow_at < tick + TICKS(ZOOM_RESTORE_GAP_MS))
+                follow_at = tick + TICKS(ZOOM_RESTORE_GAP_MS);
             continue;
         }
-        if (g_conf.zoom_restore && restore_at < 0 && zoom_tick >= 0 && net != saved_net &&
+        /* walk the phone to the count of the view on screen, one step at a time */
+        if (follow_at >= 0 && tick >= follow_at) {
+            if (net != vnet[cur]) {
+                int s = vnet[cur] > net ? 1 : -1;
+                if (!following)
+                    plog("zoom: %s view, phone %d -> %d step(s)", cur ? "big-gauge" : "large-map",
+                         net, vnet[cur]);
+                following = 1;
+                if (send_zoom_step(rx->session, s) == 0) {
+                    net += s;
+                    zoom_net_set(net);
+                }
+                follow_at = tick + TICKS(ZOOM_RESTORE_GAP_MS);
+                continue;
+            }
+            if (following) {
+                plog("zoom: phone at %d step(s)", net);
+                if (restoring) slog("zoom: %d saved step(s) restored", net);
+                following = 0;
+            }
+            restoring = 0;
+        }
+        if (g_conf.zoom_restore && zoom_tick >= 0 && (vnet[0] != saved[0] || vnet[1] != saved[1]) &&
             tick - zoom_tick >= TICKS(3000)) {
-            zoom_store(net);
-            saved_net = net;
+            zoom_store(vnet);
+            saved[0] = vnet[0];
+            saved[1] = vnet[1];
         }
         if (rx->kf_now && tick - last_kf >= TICKS(500)) {
             rx->kf_now = 0;
@@ -1383,8 +1444,8 @@ static void *cmd_main(void *arg) {
             last_kf = tick;
         }
     }
-    if (g_conf.zoom_restore && restore_at < 0 && zoom_tick >= 0 && net != saved_net)
-        zoom_store(net);
+    if (g_conf.zoom_restore && zoom_tick >= 0 && (vnet[0] != saved[0] || vnet[1] != saved[1]))
+        zoom_store(vnet);
     plog("command thread finished");
     return NULL;
 }
@@ -1541,6 +1602,7 @@ static void receive(receiver_t *rx, int fd) {
     /* statistics for the session log */
     unsigned long long bytes = 0;
     unsigned long sec_bytes = 0, peak = 0, pauses = 0, cfgs = 0;
+    int cfg_w = -1, cfg_h = -1, cfg_p = -1, cfg_l = -1;    /* stream data logged last */
     uint32_t unit_max = 0;
     long now, last_rx = 0, sec_t0 = 0, last_idr = 0, idr_gap = 0, pause_max = 0;
     /* a line per minute for ten minutes, then one every ten: a session that
@@ -1612,9 +1674,17 @@ static void receive(receiver_t *rx, int fd) {
             plog("CONFIG %dx%d size=%u avcC=%s lengthSize=%d data=%s%s",
                  (int)(w + 0.5f), (int)(h + 0.5f), size, l ? "yes" : "NO", ls, hex,
                  size > 64 ? "..." : "");
-            if (cfgs++ < 5 && size >= 4)
+            /* the iPhone repeats the config in front of keyframes: one line
+             * per stream, another only when the values change */
+            if (size >= 4 && ((int)(w + 0.5f) != cfg_w || (int)(h + 0.5f) != cfg_h ||
+                              body[1] != cfg_p || body[3] != cfg_l) && cfgs++ < 5) {
+                cfg_w = (int)(w + 0.5f);
+                cfg_h = (int)(h + 0.5f);
+                cfg_p = body[1];
+                cfg_l = body[3];
                 slog("111: stream %dx%d, H.264 profile %u level %u (hook %s)",
-                     (int)(w + 0.5f), (int)(h + 0.5f), body[1], body[3], HOOK_BUILD);
+                     cfg_w, cfg_h, (unsigned)cfg_p, (unsigned)cfg_l, HOOK_BUILD);
+            }
             rx->streaming = 1;
         } else if (op == 0) {                 /* encrypted access unit */
             int types = 0, opened = 1;
