@@ -2,13 +2,14 @@
 
 Mit diesem Paket zeigt das Virtual Cockpit die CarPlay-Karte (Google Maps oder Apple Karten) an
 der Stelle der Audi-Karte. Entwickelt und getestet in einem A6 C8; Tester melden es auch in
-einem Q8 und einem e-tron als funktionierend. **Alles auf eigene Gefahr.**
+weiteren A6, einem S6, einem Q8 und einem e-tron als funktionierend. **Alles auf eigene
+Gefahr.**
 
 ## Voraussetzungen
 
 - **MMI-Softwareversion prüfen:** im MMI unter *Einstellungen → Systeminformationen → Version*
-  (oder ähnlich). Dort muss `MH2p_…_P2711` stehen. Bei anderen Versionen bitte erst
-  melden. CarPlay läuft dort zwar weiter, aber im Cockpit kommt nichts an.
+  (oder ähnlich). Dort muss `MH2p_…_P2711` oder `MH2p_…_P2873` stehen. Bei anderen Versionen
+  bitte erst melden. CarPlay läuft dort zwar weiter, aber im Cockpit kommt nichts an.
 - **CarPlay** funktioniert schon, kabellos oder per Kabel. Die Cockpit-Karte geht mit beidem.
 - **SD-Karte** (oder USB-Stick, falls dein Auto ModKit-Updates vom Stick annimmt), FAT32
   formatiert.
@@ -45,7 +46,11 @@ sich geändert hat.
 - Lenkrad-Rädchen zoomt die Karte (Google Maps und Apple Karten; Waze reagiert nicht darauf).
   Beide Cockpit-Ansichten (große Karte / große Tachos) gehen.
 - Der Zoom wird gemerkt: Nach einem Neuverbinden oder MMI-Neustart zoomt die Karte ein paar
-  Sekunden nach dem Erscheinen wieder dorthin, wo du sie gelassen hast.
+  Sekunden nach dem Erscheinen wieder dorthin, wo du sie gelassen hast. Die große Karte und
+  die Karte zwischen den großen Tachos merken sich je einen eigenen Zoom; nach einem Wechsel
+  der Ansicht zoomt die Karte in ein paar Sekunden auf den Wert dieser Ansicht.
+- Die Cockpit-Layouts *Classic*, *Dynamic* und *Performance* (S- und RS-Modelle) werden
+  automatisch erkannt; etwa eine Sekunde nach einem Layoutwechsel passt die Karte dazu.
 - Die Cockpit-Karte wechselt zusammen mit CarPlay auf dem MMI zwischen Tag und Nacht.
 - Das iPhone wird um sein Tempolimit-Schild auf der Cockpit-Karte gebeten. Im Testauto ist
   bisher keins erschienen; ob die Karten-App eins zeichnet, hängt womöglich von Region und
@@ -60,11 +65,10 @@ sich geändert hat.
   und das Logo der Satellitenkarte („Google“) sind ausgeblendet, solange die CarPlay-Karte
   läuft. Höhe, Straße und Kompass bleiben stehen.
 - **Android Auto (per Kabel):** Google Maps erscheint ebenfalls im Cockpit, über die volle
-  Breite, mit der Abbiegekarte in beiden Ansichten frei neben den Rundinstrumenten. Das
-  Rädchen zoomt dort nicht; Google Maps zoomt selbst.
-- **CarPlay-Bild anpassen (optional):** Verdeckt das Cockpit einen Teil der Karten-Anzeigen,
-  zum Beispiel die Ankunftszeile in der „Performance“-Ansicht der S- und RS-Modelle, dann
-  kopiere auf der Karte `Mods/ClusterIntegration/altscreen_conf.example.txt` nach
+  Breite: Pfeil in der Mitte, Abbiegekarte oben, Ankunftszeile unten, in beiden Ansichten frei
+  neben den Rundinstrumenten. Das Rädchen zoomt dort nicht; Google Maps zoomt selbst.
+- **CarPlay-Bild anpassen (optional):** Verdeckt das Cockpit deines Modells einen Teil der
+  Karten-Anzeigen, dann kopiere auf der Karte `Mods/ClusterIntegration/altscreen_conf.example.txt` nach
   `altscreen_conf.txt`, trage die Werte ein, wie in der Datei beschrieben, und stecke die
   Karte noch einmal ein.
 
@@ -73,8 +77,10 @@ sich geändert hat.
 Am meisten helfen:
 
 - Fotos vom Cockpit.
-- Die Datei `Logs/ClusterIntegration.log` von der Karte. Bitte vor dem Verschicken
-  durchsehen, sie enthält Daten über dein MMI.
+- Die Dateien `Logs/ClusterIntegration.log` und `Logs/altscreen-sessions.log` von der Karte.
+  Bitte vor dem Verschicken durchsehen, die erste enthält Daten über dein MMI. Das Auto
+  kopiert seine Logs immer dann auf die Karte, wenn sie eingesteckt wird; bei einem Problem
+  während der Fahrt die Karte danach also noch einmal einstecken.
 - Kurz beschreiben: Auto, MMI-Version, iPhone/iOS-Version und was passiert oder nicht
   passiert.
 

@@ -1,14 +1,14 @@
 # CarPlay map in the Virtual Cockpit – test version
 
 This package puts the CarPlay map (Google Maps or Apple Maps) into the Virtual Cockpit, where
-the Audi map normally is. Developed and tested in an A6 C8; testers report it working in a Q8
-and an e-tron. **Use at your own risk.**
+the Audi map normally is. Developed and tested in an A6 C8; testers report it working in other
+A6, an S6, a Q8 and an e-tron. **Use at your own risk.**
 
 ## Requirements
 
 - **Check the MMI software version:** in the MMI under *Settings → System information →
-  Version* (or similar). It must say `MH2p_…_P2711`. On other versions, please get in touch
-  first. CarPlay keeps working there, but nothing shows up in the cockpit.
+  Version* (or similar). It must say `MH2p_…_P2711` or `MH2p_…_P2873`. On other versions,
+  please get in touch first. CarPlay keeps working there, but nothing shows up in the cockpit.
 - **CarPlay** already works, wireless or by cable. The cockpit map works with both.
 - **SD card** (or USB stick, if your car accepts ModKit updates from a stick), formatted as
   FAT32.
@@ -44,7 +44,11 @@ installed and only replaces what changed.
 - The steering-wheel roller zooms the map (Google Maps and Apple Maps; Waze ignores it). Both
   cockpit layouts (large map / large gauges) work.
 - The zoom is remembered: after a reconnect or an MMI restart the map zooms back to where you
-  left it, a few seconds after it appears.
+  left it, a few seconds after it appears. The large map and the map between the big gauges
+  each keep their own zoom; after you change the view, the map zooms to that view's level
+  within a few seconds.
+- The cockpit layouts *Classic*, *Dynamic* and *Performance* (S and RS models) are followed
+  automatically; about a second after you change the layout the map fits it.
 - The cockpit map switches between day and night together with CarPlay on the MMI.
 - The iPhone is asked to show its speed limit sign on the cockpit map. On the test car none
   has appeared so far; whether Maps draws one may depend on region and route. Please report
@@ -58,11 +62,11 @@ installed and only replaces what changed.
 - The Audi map's zoom display at the bottom (magnifier, "400 m"), the traffic logo at the
   bottom left ("TMC") and the satellite map logo ("Google") are hidden while the CarPlay map
   is shown. Altitude, street and compass stay.
-- **Android Auto (wired):** Google Maps appears in the cockpit as well, across the full width,
-  with the turn card clear of the dials in both layouts. The roller does not zoom it; Google
-  Maps zooms by itself there.
-- **Fitting the CarPlay picture (optional):** if the cockpit hides part of the map's cards,
-  for example the arrival line in the "Performance" view of S and RS models, copy
+- **Android Auto (wired):** Google Maps appears in the cockpit as well, across the full width:
+  arrow in the centre, turn card at the top, arrival line at the bottom, clear of the dials
+  in both views. The roller does not zoom it; Google Maps zooms by itself there.
+- **Fitting the CarPlay picture (optional):** if the cockpit of your model hides part of the
+  map's cards, copy
   `Mods/ClusterIntegration/altscreen_conf.example.txt` on the card to `altscreen_conf.txt`,
   set the values as described in the file, and insert the card again.
 
@@ -71,8 +75,10 @@ installed and only replaces what changed.
 Most helpful:
 
 - Photos of the cockpit.
-- The file `Logs/ClusterIntegration.log` from the card. Please look through it before sending,
-  it contains data about your MMI.
+- The files `Logs/ClusterIntegration.log` and `Logs/altscreen-sessions.log` from the card.
+  Please look through them before sending, the first one contains data about your MMI. The
+  car copies its logs to the card whenever the card is inserted, so for a problem while
+  driving insert the card once more afterwards.
 - A short description: car, MMI version, iPhone/iOS version, and what happens or doesn't.
 
 If the cockpit keeps showing the Audi map for more than a few seconds after start-up even
