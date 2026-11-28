@@ -1,9 +1,10 @@
 #!/bin/ksh
 # altscreen (CarPlay instrument-cluster video): opens TCP 6031 in Audi's packet
 # filter. Installed as cluster/altscreen_pf.sh with enable_carplay_altscreen.txt
-# and started in the background at every boot by Persist/install.sh, or by
-# the dio_manager wrapper (with the argument "now") on a unit where the
-# ModKit's boot script is missing.
+# and started in the background at every boot by Persist/install.sh. It needs
+# root for pfctl: started from the dio_manager wrapper (user carplay) it could
+# not open the port (seen on an A6 C8, 2026-11-26), so only the boot script
+# starts it.
 # GPL-3.0-or-later, see src/altscreen/altscreen.c.
 #
 # The iPhone sends the cluster stream to TCP 6031 (the dio_manager hook's
@@ -94,14 +95,9 @@ check() {
 }
 
 mkdir -p /mnt/ota/modkit/Logs 2>/dev/null
-if [[ "$1" == now ]]; then
-    # started late, the system is up and the iPhone may be connecting
-    echo "=== start by the dio_manager wrapper $(date)" >> "$LOG"
-else
-    echo "=== boot $(date)" >> "$LOG"
-    waitfor /tmp/pf_ready 30 2>/dev/null
-    sleep 10
-fi
+echo "=== boot $(date)" >> "$LOG"
+waitfor /tmp/pf_ready 30 2>/dev/null
+sleep 10
 check
 ( n=0; while true; do
       if [[ $n -lt 150 ]]; then sleep 2; n=$((n + 1)); else sleep 30; fi

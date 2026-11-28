@@ -75,25 +75,20 @@ mkdir -p /mnt/ota/modkit; : > /mnt/ota/modkit/modkit_persist.sh   # a unit where
 mksh /mnt/app/eso/bin/apps/dio_manager 2>/dev/null | grep -q "PRELOAD=$AC/altscreen.so$" && res "altscreen: wrapper preloads altscreen.so" PASS || res "altscreen: wrapper preloads altscreen.so" FAIL
 out=$(mksh "$MOD_PATH/install.sh" 2>&1); echo "$out" | grep -q "skip identical:    $AC/altscreen.so" && echo "$out" | grep -q 'carplay altscreen: ON' && res "altscreen: re-run idempotent" PASS || res "altscreen: re-run idempotent" FAIL
 echo "$out" | grep -q 'modkit boot:       skipped' && res "modkit boot: skipped without a start program" PASS || res "modkit boot: skipped without a start program" FAIL
-SMGT=/mnt/app/eso/bin/servicemgrmibhigh; SELFLOG=/mnt/ota/modkit/Logs/altscreen-selfstart.log
-selfclean() { pkill -f 'altscreen_pf.sh' 2>/dev/null; pkill -f '^sleep 2$' 2>/dev/null; rm -f /tmp/altscreen_pf.pid /tmp/cluster_daemon.pid; }
+SMGT=/mnt/app/eso/bin/servicemgrmibhigh
+pfclean() { pkill -f 'altscreen_pf.sh' 2>/dev/null; pkill -f '^sleep 10$' 2>/dev/null; pkill -f '^sleep 2$' 2>/dev/null; rm -f /tmp/altscreen_pf.pid; }
 cp /bin/ls $SMGT; out=$(mksh "$MOD_PATH/install.sh" 2>&1); echo "$out" | grep -q 'modkit boot:       OK' && res "modkit boot: clean unit reported OK" PASS || res "modkit boot: clean unit" FAIL
 mv $SMGT ${SMGT}0; printf '#!/bin/sh\n/eso/bin/servicemgrmibhigh0 &\n' > $SMGT; out=$(mksh "$MOD_PATH/install.sh" 2>&1); echo "$out" | grep -q 'modkit boot:       OK' && res "modkit boot: ModKit's own patch reported OK" PASS || res "modkit boot: ModKit patch" FAIL
 mv ${SMGT}0 ${SMGT}99; printf '#!/bin/sh\n# [q3team]\n/eso/bin/servicemgrmibhigh99 &\n' > $SMGT; h1=$(cat $SMGT ${SMGT}99 | cksum); rm -rf /mnt/ota/modkit/Logs
 out=$(mksh "$MOD_PATH/install.sh" 2>&1); h2=$(cat $SMGT ${SMGT}99 | cksum)
-echo "$out" | grep -q 'modkit boot:       WARN .*unknown patch state' && echo "$out" | grep -q "seems to be ${SMGT}99 (left alone)" && echo "$out" | grep -q 'the dio_manager wrapper starts' && [[ -d /mnt/ota/modkit/Logs && "$h1" == "$h2" && ! -e ${SMGT}0 ]] && res "modkit boot: foreign start script reported, files left alone, log folder made" PASS || { res "modkit boot: foreign start script" FAIL; echo "$out" | grep 'modkit boot'; }
+echo "$out" | grep -q 'modkit boot:       WARN .*unknown patch state' && echo "$out" | grep -q "seems to be ${SMGT}99 (left alone)" && echo "$out" | grep -q 'modkit boot:       the CarPlay map will not show in the cockpit on this unit' && [[ ! -d /mnt/ota/modkit/Logs && "$h1" == "$h2" && ! -e ${SMGT}0 ]] && res "modkit boot: foreign start script reported with its consequence, nothing changed" PASS || { res "modkit boot: foreign start script" FAIL; echo "$out" | grep 'modkit boot'; }
 rm -f $SMGT ${SMGT}99
-selfclean; rm -f $SELFLOG /tmp/dio_preload.log; mksh /mnt/app/eso/bin/apps/dio_manager 2>/dev/null | grep -q "PRELOAD=$AC/altscreen.so" && [[ ! -f /tmp/altscreen_pf.pid && ! -f $SELFLOG ]] && ! grep -q selfstart /tmp/dio_preload.log && res "selfstart: nothing with the ModKit's boot script in place" PASS || res "selfstart: nothing with the ModKit's boot script" FAIL
-rm -f /mnt/ota/modkit/modkit_persist.sh; mksh /mnt/app/eso/bin/apps/dio_manager 2>/dev/null | grep -q "PRELOAD=$AC/altscreen.so" && w=ok || w=bad; sleep 1
-read pfp < /tmp/altscreen_pf.pid 2>/dev/null
-[[ $w == ok && -n "$pfp" && -d /proc/$pfp ]] && ! tr '\0' '\n' < /proc/$pfp/environ | grep -q LD_PRELOAD && grep -q 'port watcher: started' $SELFLOG && grep -q 'no ModKit boot script' $SELFLOG && grep -q 'start by the dio_manager wrapper' /mnt/ota/modkit/Logs/altscreen-pf.log && res "selfstart: wrapper starts the port watcher without the ModKit's boot script" PASS || { res "selfstart: wrapper starts the port watcher" FAIL; cat $SELFLOG /tmp/dio_preload.log 2>&1 | tail -8; }
-grep -q 'selfstart: cluster daemon: started' /tmp/dio_preload.log && [[ -s /tmp/cluster_daemon.pid ]] && res "selfstart: wrapper starts the daemon and records its pid" PASS || res "selfstart: wrapper starts the daemon" FAIL
-mksh /mnt/app/eso/bin/apps/dio_manager >/dev/null 2>&1; sleep 1; read pfq < /tmp/altscreen_pf.pid
-[[ "$pfp" == "$pfq" && $(grep -c 'port watcher: started' $SELFLOG) -eq 1 ]] && grep -q "port watcher: already running (pid $pfp)" $SELFLOG && res "selfstart: a second wrapper start leaves the running watcher" PASS || { res "selfstart: second wrapper start" FAIL; cat $SELFLOG; }
-mksh $AC/altscreen_pf.sh 2>&1 | grep -q "already running (pid $pfp)" && read pfq < /tmp/altscreen_pf.pid && [[ "$pfp" == "$pfq" ]] && res "selfstart: the boot script's own start leaves the running watcher" PASS || res "selfstart: Persist start next to a running watcher" FAIL
-selfclean; echo 999999 > /tmp/altscreen_pf.pid; mksh /mnt/app/eso/bin/apps/dio_manager >/dev/null 2>&1; sleep 1; read pfq < /tmp/altscreen_pf.pid
-[[ "$pfq" != 999999 && -d /proc/$pfq ]] && res "selfstart: a stale pid file does not block the start" PASS || res "selfstart: stale pid file" FAIL
-selfclean; : > /mnt/ota/modkit/modkit_persist.sh; rm -f $SELFLOG
+pfclean; rm -f /tmp/dio_preload.log /tmp/cluster_daemon.pid /mnt/ota/modkit/modkit_persist.sh; mksh /mnt/app/eso/bin/apps/dio_manager 2>/dev/null | grep -q "PRELOAD=$AC/altscreen.so" && sleep 1 && [[ ! -f /tmp/altscreen_pf.pid && ! -f /tmp/cluster_daemon.pid ]] && res "wrapper starts nothing of the boot part, with or without the ModKit's boot script" PASS || res "wrapper starts nothing of the boot part" FAIL
+mkdir -p /mnt/ota/modkit/Logs; mksh $AC/altscreen_pf.sh >/dev/null 2>&1 & sleep 1; read pfp < /tmp/altscreen_pf.pid 2>/dev/null
+[[ -n "$pfp" && -d /proc/$pfp ]] && mksh $AC/altscreen_pf.sh 2>&1 | grep -q "already running (pid $pfp)" && read pfq < /tmp/altscreen_pf.pid && [[ "$pfp" == "$pfq" ]] && res "port watcher: a second start leaves the running one" PASS || res "port watcher: second start" FAIL
+pfclean; echo 999999 > /tmp/altscreen_pf.pid; mksh $AC/altscreen_pf.sh >/dev/null 2>&1 & sleep 1; read pfq < /tmp/altscreen_pf.pid
+[[ "$pfq" != 999999 && -d /proc/$pfq ]] && res "port watcher: a stale pid file does not block the start" PASS || res "port watcher: stale pid file" FAIL
+pfclean; : > /mnt/ota/modkit/modkit_persist.sh
 echo "$out" | grep -q 'carplay turns:     OFF (trial' && [[ ! -f $AC/carplay_turns ]] && res "carplay turns: off without carplay_turns.txt" PASS || res "carplay turns: off without carplay_turns.txt" FAIL
 touch "$SCR/fakesd/Mods/ClusterIntegration/carplay_turns.txt"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
 [[ -f $AC/carplay_turns ]] && echo "$out" | grep -q 'carplay turns:     ON' && grep -q "add $AC/carplay_turns" "$MOD_PATH/Backup/manifest.txt" && res "carplay turns: marker installed and recorded" PASS || res "carplay turns: marker installed" FAIL

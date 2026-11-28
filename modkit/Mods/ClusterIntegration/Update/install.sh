@@ -1194,8 +1194,10 @@ fi
 # Persist/install.sh at every boot. When another patch already replaced the
 # start program, the ModKit stops with "error: unknown patch state" in
 # _ModKit_Update.log and nothing starts the mod's boot part. This only looks
-# and reports; the dio_manager wrapper then starts the boot part of the CarPlay
-# map itself, and the log folder is made here so the stick collects its logs.
+# and reports. Nothing else on the unit can stand in for the boot part: the
+# port for the CarPlay cockpit video needs root, and the programs the mod wraps
+# run as other users (a start from the dio_manager wrapper was tried on such a
+# unit, 2026-11-26, and could not open the port).
 SMG=/mnt/app/eso/bin/servicemgrmibhigh
 smg_is_program() {
     [[ -f "$1" ]] || return 1
@@ -1212,8 +1214,7 @@ else
         smg_is_program "$smg_other" && print "modkit boot:       the original start program seems to be $smg_other (left alone)"
     done
     if [[ $ALTSCREEN -eq 1 ]]; then
-        mkdir -p /mnt/ota/modkit/Logs 2>/dev/null
-        print "modkit boot:       the dio_manager wrapper starts the CarPlay map's boot part itself (altscreen-selfstart.log and altscreen-pf.log in the Logs folder after the next run of the stick)"
+        print "modkit boot:       the CarPlay map will not show in the cockpit on this unit: without the boot part the port for its video stays closed. The mod cannot work around the other patch"
     fi
 fi
 

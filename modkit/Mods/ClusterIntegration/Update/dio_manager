@@ -36,47 +36,6 @@ fi
 
 echo -e "\ndio_date: $(date)"  >> $DIO_PRELOAD_LOG
 
-# Boot part without the ModKit. At every boot the ModKit runs the mod's
-# Persist/install.sh, which starts the cluster daemon and altscreen_pf.sh (it
-# opens TCP 6031 for the cockpit video). On a unit where the ModKit cannot set
-# up its own start ("error: unknown patch state" in _ModKit_Update.log: the
-# MMI's start program was already replaced by another patch's script) nothing
-# starts them and the cockpit map never arrives. So when the ModKit's boot
-# script is missing, this wrapper starts what is not running. Same rule as in
-# the gal wrapper: whoever starts something records its pid in /tmp, and the
-# pid is checked through /proc/<pid> with shell built-ins. What it did goes to
-# altscreen-selfstart.log in the ModKit log folder, which the stick collects.
-# This runs before LD_PRELOAD is set: the hook belongs into dio_manager only.
-SELF_PF=/mnt/app/eso/bin/apps/cluster/altscreen_pf.sh
-SELF_LOG=/mnt/ota/modkit/Logs/altscreen-selfstart.log
-selflog() {
-    echo "selfstart: $*" >> $DIO_PRELOAD_LOG
-    echo "$*" >> $SELF_LOG 2>/dev/null
-}
-if [ -x "$SELF_PF" ] && [ ! -f /mnt/ota/modkit/modkit_persist.sh ]; then
-    mkdir -p /mnt/ota/modkit/Logs 2>/dev/null
-    selflog "=== $(date): no ModKit boot script (/mnt/ota/modkit/modkit_persist.sh), the dio_manager wrapper starts the boot part; user: $(id 2>&1)"
-    if { read p < /tmp/altscreen_pf.pid && [ -n "$p" ] && [ -d "/proc/$p" ]; } 2>/dev/null; then
-        selflog "port watcher: already running (pid $p)"
-    else
-        "$SELF_PF" now >/dev/null 2>&1 &
-        selflog "port watcher: started (pid $!)"
-    fi
-    SELF_BIN=/mnt/app/eso/bin/apps/cluster/cluster
-    if [ -x "$SELF_BIN" ]; then
-        if { read p < /tmp/cluster_daemon.pid && [ -n "$p" ] && [ -d "/proc/$p" ]; } 2>/dev/null; then
-            selflog "cluster daemon: already running (pid $p)"
-        else
-            V=""
-            [ -f /mnt/app/eso/bin/apps/cluster/daemon_verbose ] && V="verbose=2"
-            "$SELF_BIN" daemon $V >/dev/null 2>&1 &
-            p=$!
-            echo $p > /tmp/cluster_daemon.pid 2>/dev/null
-            selflog "cluster daemon: started (pid $p, pid file written: $?)"
-        fi
-    fi
-fi
-
 if [ -f $DIO_PRELOAD ]; then
     export LD_PRELOAD=$DIO_PRELOAD
     echo "dio_preload: $DIO_PRELOAD" found >> $DIO_PRELOAD_LOG
