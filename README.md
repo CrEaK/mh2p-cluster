@@ -23,13 +23,17 @@ This project is built on [fifthBro/mh2p-cluster](https://github.com/fifthBro/mh2
 - The Audi zoom scale and the traffic and satellite logos are hidden over the phone's map.
 - LawPaul's NavCompassIgnore is included, so the cockpit does not switch to the compass when a route starts.
 
-In testing, not in a release yet:
+Optional, off until you switch it on in `settings.txt` (new in beta 5, software P2711 and P2873):
 
-- **The phone's next turn in Audi's own box** next to the right dial (arrow, distance, street, arrival time), also in the cockpit tabs that show no map.
-- **Arrow and distance on the head-up display**, and Audi's picture with the flag near the destination.
-- Switches for what the iPhone draws on the cockpit map (its turn card, its arrival line).
-- One settings file on the card in place of the single switch files.
-- A fixed cockpit size for cars where the picture ends too early (Q3 with the Virtual Cockpit Plus).
+- **The phone's next turn in Audi's own box** next to the right dial (arrow, distance, street, arrival time), also in the cockpit tabs that show no map. With CarPlay and with Android Auto.
+- **Arrow and distance on the head-up display.**
+- **Audi's picture with the flag** for the last 200 m before the destination.
+
+Also new in beta 5:
+
+- **One settings file** on the card, `settings.txt`, in place of single switch files. Every value is explained in the file.
+- The cockpit video uses a port Audi's firewall already passes. That closes a gap in which the map sometimes did not come after connecting.
+- Switches for what the iPhone draws on the cockpit map (its turn card, its arrival line), and a fixed cockpit size for cars where the picture ends too early (Q3 with the Virtual Cockpit Plus).
 
 ## Tested vehicles
 
@@ -53,7 +57,7 @@ What people have reported so far. A tick means the map shows in the cockpit and 
 
 Known not to work: a unit where another patch replaced the MMI's start program, so the SD ModKit cannot set up its part that runs at every boot ([#9](https://github.com/CrEaK/mh2p-cluster/issues/9)).
 
-The features in testing have run on fewer cars: the turn box on the development A6 (P2711), the head-up display arrow on Alex1907's Q8 (P2711).
+The optional parts have run on fewer cars: the turn box and the flag on the development A6 (P2711), the head-up display arrow on Alex1907's Q8 (P2711). On P2873 they are built from a dump of that software and have not been confirmed on a car yet.
 
 **Your car is not in the list?** If it works, or does not, please open an [issue](https://github.com/CrEaK/mh2p-cluster/issues) with car, model year, MMI software version and phone, and it goes into this table. On other software versions than P2711 and P2873 CarPlay keeps working, but the cockpit keeps the Audi map: each version has to be checked against its own files first. If you want to help with yours, contact me through an issue.
 
@@ -67,25 +71,32 @@ Short version; the [guide](docs/carplay-cockpit/GUIDE-EN.md) has every step ([De
 4. Connect the phone and start a route.
 5. **Keep the card.** It holds the backups that are needed to uninstall.
 
+The map works without any setting. For the turn box, the head-up display or other changes, see Options.
+
 To update, unzip the new version over the same card and insert it again.
 
 ## Options
 
-Files in `Mods/ClusterIntegration/` on the card switch parts on and off. The ones most people need:
+One file sets everything: copy `Mods/ClusterIntegration/settings.example.txt` on the card to `settings.txt`, remove the `#` in front of a line, set the value, and insert the card again. The file explains every value. The ones most people need:
 
-| File on the card | What it does |
+| Line in `settings.txt` | What it does |
 |---|---|
-| `enable_carplay_altscreen.txt` | The CarPlay map in the cockpit. Already in the package. |
-| `altscreen_conf.txt` | Settings for the CarPlay map: picture areas per cockpit layout, zoom, what the iPhone draws. |
-| `uninstall.txt` | Removes the mod and restores the backups. |
+| `carplay_map=1` | The CarPlay map in the cockpit. On without the file; `0` turns it off. |
+| `turn_box=1` | The phone's next turn in Audi's box next to the right dial (P2711, P2873). |
+| `turn_box_on_map=0` | The box makes way while the cockpit shows the phone's map and stays in the other tabs. `1` shows it everywhere. |
+| `hud_navigation=1` | Arrow and distance on the head-up display (P2711, P2873). |
+| `destination_flag=1` | Audi's picture with the flag near the destination. |
+| `map_turn_card=0`, `map_arrival_line=0` | Leave the cockpit map free of the iPhone's own turn card and arrival line, useful with the box. |
+| `map_area_large=…`, `map_area_small=…` | Fit the picture when your cockpit hides part of the iPhone's cards. |
 
-In testing, for the next release: one file `settings.txt` for all of it (`carplay_map=1`, `turn_box=1`, `hud_navigation=1`, the map's settings), with every value explained in `settings.example.txt`. The single files keep working.
+An update does not overwrite your `settings.txt`. The single files of earlier versions (`enable_carplay_altscreen.txt`, `altscreen_conf.txt`) keep working. Every setting and file: [docs/options.md](docs/options.md).
 
-All settings and files, including the ones in testing: [docs/options.md](docs/options.md).
+The turn box and the head-up display arrow put a small hook into Audi's navigation program. If the Audi navigation does not behave as before, set the lines back to `0` and insert the card again.
 
 ## Remove
 
-- **Only the CarPlay map:** delete `enable_carplay_altscreen.txt` on the card and insert the card again.
+- **Only the CarPlay map:** `carplay_map=0` in `settings.txt`, insert the card again.
+- **Only the turn box or the head-up display:** set their lines to `0` (or take them out), insert the card again.
 - **Everything:** create an empty file `uninstall.txt` in `Mods/ClusterIntegration` and insert the card again. NavCompassIgnore stays; an `uninstall.txt` in `Mods/NavCompassIgnore` removes it too.
 
 ## Reporting a problem
@@ -103,7 +114,10 @@ Open an [issue](https://github.com/CrEaK/mh2p-cluster/issues) with:
 - The iPhone never reports its zoom back, the mod counts roller steps. If the zoom of a view is off, zoom once by hand and it is remembered again.
 - Android Auto gets its layout once per connection, so one layout serves both cockpit views, and its cockpit map goes off while the MMI shows something else.
 - Android Auto: the picture can smear on some cars ([#4](https://github.com/CrEaK/mh2p-cluster/issues/4)).
-- Now and then the CarPlay map does not come right after connecting; reconnecting brings it.
+- If the CarPlay map does not come after connecting, reconnect, and please report it: beta 5 changes how the video reaches the car to close that gap.
+- Android Auto has had less testing than CarPlay. Once, on leaving Android Auto, the MMI stayed black until the cable was pulled; it did not happen again. Please report it if you see it.
+- Android Auto gives no arrival time, so the turn box shows arrow and distance only.
+- The turn box, the head-up display arrow and the flag need the hook in the navigation program and so work on P2711 and P2873 only. On the head-up display of other versions only the street name appears.
 
 ## How it works, and more
 

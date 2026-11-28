@@ -32,7 +32,7 @@ CarPlay has the same idea under another name: a second screen stream ("altScreen
 
 Around that: the steering-wheel roller's zoom steps are passed to the iPhone, the cockpit's view changes (large map, large gauges, the layouts) are passed on so the iPhone moves its cards, day and night are repeated for the cluster screen, and a checkbox in the cockpit's navigation menu switches back to the Audi map.
 
-## Turn data, the box and the head-up display (in testing)
+## Turn data, the box and the head-up display (optional, since beta 5)
 
 The original project sends the phone's next manoeuvre to the cockpit over BAP, the car's protocol between head unit and cluster. On the Audi units tested here the cockpit draws nothing from that alone. Audi's own turn box and the head-up display picture are drawn by the navigation program, from its own route.
 

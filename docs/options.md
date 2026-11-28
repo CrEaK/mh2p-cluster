@@ -2,9 +2,9 @@
 
 Everything is set on the card, in `Mods/ClusterIntegration/` next to the folder `Update`. Change something, insert the card again, and the installer applies the difference.
 
-"Since" says where something first works: a release, or "after beta 4" for what is in this repository and in test packages but in no release yet.
+"Since" says in which release something first works.
 
-## `settings.txt`: one file for everything (after beta 4)
+## `settings.txt`: one file for everything (since beta 5)
 
 Copy `settings.example.txt` to `settings.txt`, remove the `#` in front of a line, set the value. The example file explains every value. One `key=value` per line, `#` starts a comment.
 
@@ -17,10 +17,10 @@ Copy `settings.example.txt` to `settings.txt`, remove the `#` in front of a line
 | Key | Values | What it does |
 |---|---|---|
 | `carplay_map` | `1` on, `0` off | CarPlay map in the cockpit (the iPhone's instrument-cluster video). On in the package. |
-| `turn_box` | `1` on, `0` off | Trial, P2711 and P2873: the phone's next turn in Audi's own cockpit box. Installs a hook in the navigation process. |
+| `turn_box` | `1` on, `0` off | Optional, P2711 and P2873: the phone's next turn in Audi's own cockpit box. Installs a hook in the navigation process. |
 | `turn_box_on_map` | `0`, `1` | With `turn_box`: `0` = the box makes way while the cockpit shows the phone's map (CarPlay or Android Auto) and is there in the other tabs, `1` = the box in every tab. |
-| `hud_navigation` | `0`, `1`, `2` | Trial: the phone's next turn on the head-up display. On P2711 and P2873 with arrow and distance (same hook as the box), elsewhere the street name only. `2` also hands on the other roads of the junction, which Audi draws as short stubs around the arrow (untested on a car). |
-| `destination_flag` | `1` on, `0` off | Trial, with `turn_box` or `hud_navigation` on P2711 and P2873: Audi's picture with the flag for the last 200 m. |
+| `hud_navigation` | `0`, `1`, `2` | Optional: the phone's next turn on the head-up display. On P2711 and P2873 with arrow and distance (same hook as the box), elsewhere the street name only. `2` also hands on the other roads of the junction, which Audi draws as short stubs around the arrow (untested on a car). |
+| `destination_flag` | `1` on, `0` off | Optional, with `turn_box` or `hud_navigation` on P2711 and P2873: Audi's picture with the flag for the last 200 m. |
 | `carplay_turns` | `1`, `0` | CarPlay's turn data for the box and the head-up display. Comes by itself with `turn_box` or `hud_navigation`; the key only overrules that. |
 | `cockpit_size` | `1920x722`, `auto` | A fixed size for cars where the picture ends too early (Q3 with the Virtual Cockpit Plus). |
 | `daemon_log` | `1` on, `0` off | The cluster daemon writes a detailed log (`cluster_daemon.log`). |
@@ -68,12 +68,12 @@ They keep working wherever `settings.txt` does not name the same thing. Most are
 |---|---|---|
 | `enable_carplay_altscreen.txt` (in the package) | `carplay_map=1` | beta 1 |
 | `altscreen_conf.txt` (template `altscreen_conf.example.txt`) | the `map_` and `zoom_` keys, under the hook's own names (`large`, `small`, `sport_large`, `sport_small`, `phys`, `turncard`, `eta`, `speedlimit`, `ports`, `keyframe_ms`, `zoom_...`). A file without any setting removes the installed settings. | beta 2 |
-| `nav_box.txt` | `turn_box=1` | after beta 4 |
-| `nav_box_tabs.txt` | `turn_box_on_map=0` | after beta 4 |
-| `hud_arrows.txt` (a `2` as the first character: with the junction's other roads) | `hud_navigation=1` or `2` | after beta 4 |
-| `nav_flag.txt` | `destination_flag=1` | after beta 4 |
-| `carplay_turns.txt` | `carplay_turns=1` | after beta 4 |
-| `cockpit_size.txt` (one line `WIDTHxHEIGHT`) | `cockpit_size=` | after beta 4 |
+| `nav_box.txt` | `turn_box=1` | beta 5 |
+| `nav_box_tabs.txt` | `turn_box_on_map=0` | beta 5 |
+| `hud_arrows.txt` (a `2` as the first character: with the junction's other roads) | `hud_navigation=1` or `2` | beta 5 |
+| `nav_flag.txt` | `destination_flag=1` | beta 5 |
+| `carplay_turns.txt` | `carplay_turns=1` | beta 5 |
+| `cockpit_size.txt` (one line `WIDTHxHEIGHT`) | `cockpit_size=` | beta 5 |
 | `daemon_log.txt` | `daemon_log=1` | upstream fork |
 
 ## Android Auto: `config_overrides.txt` and `gal_env.txt`
@@ -96,5 +96,5 @@ The car copies its logs into `Logs` on the card whenever the card is inserted.
 | `ClusterIntegration.log` | The installer: what it found and changed. Contains data about your MMI. |
 | `altscreen-sessions.log` | The CarPlay map hook: one block per connection. |
 | `altscreen-pf.log` | The watcher that opens the port for the cockpit video. |
-| `hud-feed.log` | Turn box and head-up display (with the trial switches). |
+| `hud-feed.log` | Turn box and head-up display (when one of them is on). |
 | `_ModKit_Update.log` | LawPaul's ModKit. |

@@ -2,8 +2,8 @@
 
 Mit diesem Paket zeigt das Virtual Cockpit die CarPlay-Karte (Google Maps oder Apple Karten) an
 der Stelle der Audi-Karte. Entwickelt und getestet in einem A6 C8; Tester melden es auch in
-weiteren A6, einem S6, einem Q8 und einem e-tron als funktionierend. **Alles auf eigene
-Gefahr.**
+weiteren A6, einem S6, einem Q8, einem Q3 und einem e-tron als funktionierend. **Alles auf
+eigene Gefahr.**
 
 ## Voraussetzungen
 
@@ -22,13 +22,14 @@ Gefahr.**
 
 1. Den **Inhalt** der Zip-Datei direkt auf die leere Karte entpacken. Danach liegen auf der
    obersten Ebene die Ordner `Data`, `Logs`, `Meta`, `Mods`.
-2. Prüfen, dass `Mods/ClusterIntegration/enable_carplay_altscreen.txt` da ist. Die leere
-   Datei schaltet die CarPlay-Karte ein und liegt in diesem Paket schon bei.
-3. Zündung an (am besten Motor laufen lassen), Karte einstecken. Das MMI startet neu und
+2. Zündung an (am besten Motor laufen lassen), Karte einstecken. Das MMI startet neu und
    installiert. Am Ende meldet es, dass es jetzt normal neu startet, und der Bildschirm wird
    schwarz. Dann die Karte herausziehen. Das MMI startet danach normal.
-4. **Die Karte danach nicht löschen oder überschreiben.** Auf ihr liegen die Sicherungen
+3. **Die Karte danach nicht löschen oder überschreiben.** Auf ihr liegen die Sicherungen
    (`Mods/ClusterIntegration/Update/Backup`), die zum Deinstallieren gebraucht werden.
+
+Die CarPlay-Karte ist ohne jede Einstellung an. Alles Weitere ist freiwillig, siehe
+*Einstellungen*.
 
 ## Auf eine neue Version aktualisieren
 
@@ -36,7 +37,7 @@ Nicht vorher deinstallieren. Den Inhalt der neuen Zip-Datei auf **dieselbe** Kar
 vorhandene Dateien ersetzen lassen; den Ordner `Mods/ClusterIntegration/Update/Backup` dabei nicht
 löschen (die Zip-Datei enthält keinen, er bleibt also stehen). Dann die Karte wie beim
 Installieren einstecken. Der Installer erkennt, was schon installiert ist, und ersetzt nur, was
-sich geändert hat.
+sich geändert hat. Deine eigene `settings.txt` bleibt, wie sie ist.
 
 ## Benutzen
 
@@ -66,31 +67,73 @@ sich geändert hat.
   läuft. Höhe, Straße und Kompass bleiben stehen.
 - **Android Auto (per Kabel):** Google Maps erscheint ebenfalls im Cockpit, über die volle
   Breite: Pfeil in der Mitte, Abbiegekarte oben, Ankunftszeile unten, in beiden Ansichten frei
-  neben den Rundinstrumenten. Das Rädchen zoomt dort nicht; Google Maps zoomt selbst.
-- **CarPlay-Bild anpassen (optional):** Verdeckt das Cockpit deines Modells einen Teil der
-  Karten-Anzeigen, dann kopiere auf der Karte `Mods/ClusterIntegration/altscreen_conf.example.txt` nach
-  `altscreen_conf.txt`, trage die Werte ein, wie in der Datei beschrieben, und stecke die
-  Karte noch einmal ein.
+  neben den Rundinstrumenten. Das Rädchen zoomt dort nicht; Google Maps zoomt selbst. Android
+  Auto ist weniger getestet als CarPlay; Rückmeldungen sind willkommen.
+
+## Einstellungen (freiwillig)
+
+Eine Datei stellt alles ein. Kopiere auf der Karte `Mods/ClusterIntegration/settings.example.txt`
+nach `settings.txt` im selben Ordner. Jede Einstellung ist eine Zeile mit einem `#` davor: das
+`#` entfernen, den Wert setzen, speichern und die Karte wie beim Installieren noch einmal
+einstecken. Die Datei erklärt jeden Wert (auf Englisch), und das Log des Installers
+(`Logs/ClusterIntegration.log`) nennt, was er gelesen hat.
+
+Eine Zeile, die auskommentiert bleibt, ändert nichts. Ein Update überschreibt deine
+`settings.txt` nicht. Die einzelnen Dateien früherer Versionen (`enable_carplay_altscreen.txt`,
+`altscreen_conf.txt`) gelten weiter; eine Zeile in `settings.txt` hat Vorrang.
+
+### Der nächste Abbiegehinweis in Audis Kasten und im Head-up-Display (neu)
+
+Für die Software `P2711` und `P2873`. Aus, bis du es einschaltest:
+
+| Zeile in `settings.txt` | Was du bekommst |
+|---|---|
+| `turn_box=1` | Den nächsten Abbiegehinweis des Handys in Audis eigenem Kasten neben dem rechten Rundinstrument: Pfeil, Entfernung, Straße und Ankunftszeit. Mit CarPlay und mit Android Auto. |
+| `turn_box_on_map=0` | Der Kasten macht Platz, solange das Cockpit die Karte vom Handy zeigt (das iPhone zeichnet dort seine eigene Abbiegekarte), und steht auf den anderen Reitern. Mit `1` steht er auf jedem Reiter. |
+| `hud_navigation=1` | Pfeil und Entfernung im Head-up-Display. |
+| `destination_flag=1` | Audis Bild mit der Flagge auf den letzten 200 m vor dem Ziel. |
+
+- Dafür kommt ein kleiner Haken in Audis Navigationsprogramm. Verhält sich die Audi-Navigation
+  danach anders als vorher: die Zeilen wieder auf `0` stellen und die Karte noch einmal
+  einstecken, dann ist der Haken wieder draußen.
+- Bisher getestet: Kasten und Flagge in einem A6 C8 mit P2711, der Pfeil im Head-up-Display in
+  einem Q8 mit P2711. Auf P2873 ist es noch in keinem Auto bestätigt; bitte melden, wie es
+  läuft.
+- Android Auto liefert keine Ankunftszeit, der Kasten zeigt dort nur Pfeil und Entfernung.
+- Auf anderen Softwareversionen zeigt `hud_navigation=1` nur den Straßennamen, und der Kasten
+  bleibt weg.
+
+### Das CarPlay-Bild
+
+- **Karte freiräumen:** Mit dem Kasten sagen die Abbiegekarte und die Ankunftszeile des iPhones
+  dasselbe noch einmal. `map_turn_card=0` und `map_arrival_line=0` lassen die Karte frei.
+- **Bild anpassen:** Verdeckt das Cockpit deines Modells einen Teil der Karten-Anzeigen des
+  iPhones, dann `map_area_large` und `map_area_small` setzen (links, oben, Breite, Höhe), wie
+  in der Datei beschrieben.
+- **Bild endet zu früh** (Audi Q3 mit Virtual Cockpit Plus): `cockpit_size=1920x722`.
 
 ## Rückmeldung
 
 Am meisten helfen:
 
 - Fotos vom Cockpit.
-- Die Dateien `Logs/ClusterIntegration.log` und `Logs/altscreen-sessions.log` von der Karte.
-  Bitte vor dem Verschicken durchsehen, die erste enthält Daten über dein MMI. Das Auto
-  kopiert seine Logs immer dann auf die Karte, wenn sie eingesteckt wird; bei einem Problem
-  während der Fahrt die Karte danach also noch einmal einstecken.
-- Kurz beschreiben: Auto, MMI-Version, iPhone/iOS-Version und was passiert oder nicht
-  passiert.
+- Der Ordner `Logs` von der Karte, vor allem `ClusterIntegration.log` und
+  `altscreen-sessions.log`, mit Kasten oder Head-up-Display auch `hud-feed.log`. Bitte vor dem
+  Verschicken durchsehen, die erste Datei enthält Daten über dein MMI. Das Auto kopiert seine
+  Logs immer dann auf die Karte, wenn sie eingesteckt wird; bei einem Problem während der
+  Fahrt die Karte danach also noch einmal einstecken.
+- Kurz beschreiben: Auto, MMI-Version, Handy und dessen Softwareversion und was passiert oder
+  nicht passiert.
 
-Falls das Cockpit nach dem Start länger als ein paar Sekunden die Audi-Karte zeigt, obwohl
+Falls das Cockpit nach dem Verbinden länger als ein paar Sekunden die Audi-Karte zeigt, obwohl
 CarPlay läuft: bitte Bescheid geben, wie lange es gedauert hat.
 
 ## Wieder entfernen
 
-- **Nur die CarPlay-Karte abschalten:** auf der Karte `enable_carplay_altscreen.txt` löschen
-  und die Karte wie bei der Installation noch einmal einstecken.
+- **Nur die CarPlay-Karte abschalten:** `carplay_map=0` in `settings.txt`, dann die Karte wie
+  bei der Installation noch einmal einstecken.
+- **Nur Kasten oder Head-up-Display abschalten:** ihre Zeilen in `settings.txt` auf `0` stellen
+  und die Karte noch einmal einstecken.
 - **Alles entfernen:** im Ordner `Mods/ClusterIntegration` eine leere Datei `uninstall.txt`
   anlegen und die Karte noch einmal einstecken. Danach ist das MMI wieder im
   Auslieferungszustand, was diesen Mod angeht. NavCompassIgnore bleibt installiert; wer ihn

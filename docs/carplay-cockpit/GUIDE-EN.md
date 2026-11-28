@@ -2,7 +2,7 @@
 
 This package puts the CarPlay map (Google Maps or Apple Maps) into the Virtual Cockpit, where
 the Audi map normally is. Developed and tested in an A6 C8; testers report it working in other
-A6, an S6, a Q8 and an e-tron. **Use at your own risk.**
+A6, an S6, a Q8, a Q3 and an e-tron. **Use at your own risk.**
 
 ## Requirements
 
@@ -21,20 +21,20 @@ A6, an S6, a Q8 and an e-tron. **Use at your own risk.**
 
 1. Unzip the **contents** of the zip file straight onto the empty card. Afterwards the top
    level holds the folders `Data`, `Logs`, `Meta`, `Mods`.
-2. Check that `Mods/ClusterIntegration/enable_carplay_altscreen.txt` is there. This empty file
-   turns the CarPlay map on and is already included in the package.
-3. Ignition on (ideally with the engine running), insert the card. The MMI restarts and
+2. Ignition on (ideally with the engine running), insert the card. The MMI restarts and
    installs. At the end it says it will now restart normally, and the screen goes black. Pull
    the card out at that point. The MMI then starts as usual.
-4. **Do not delete or overwrite the card afterwards.** It holds the backups
+3. **Do not delete or overwrite the card afterwards.** It holds the backups
    (`Mods/ClusterIntegration/Update/Backup`) that are needed to uninstall.
+
+The CarPlay map is on without any setting. Everything else is optional, see *Settings*.
 
 ## Update to a new version
 
 Do not uninstall first. Unzip the contents of the new zip onto the **same** card and let it
 replace existing files; do not delete `Mods/ClusterIntegration/Update/Backup` (the zip has no such
 folder, so it stays). Then insert the card as for the install. The installer sees what is already
-installed and only replaces what changed.
+installed and only replaces what changed. Your own `settings.txt` stays as it is.
 
 ## Use
 
@@ -64,30 +64,70 @@ installed and only replaces what changed.
   is shown. Altitude, street and compass stay.
 - **Android Auto (wired):** Google Maps appears in the cockpit as well, across the full width:
   arrow in the centre, turn card at the top, arrival line at the bottom, clear of the dials
-  in both views. The roller does not zoom it; Google Maps zooms by itself there.
-- **Fitting the CarPlay picture (optional):** if the cockpit of your model hides part of the
-  map's cards, copy
-  `Mods/ClusterIntegration/altscreen_conf.example.txt` on the card to `altscreen_conf.txt`,
-  set the values as described in the file, and insert the card again.
+  in both views. The roller does not zoom it; Google Maps zooms by itself there. Android Auto
+  has had less testing than CarPlay; reports are welcome.
+
+## Settings (optional)
+
+One file sets everything. On the card, copy `Mods/ClusterIntegration/settings.example.txt` to
+`settings.txt` in the same folder. Each setting is a line with a `#` in front; remove the `#`,
+set the value, save, and insert the card again as for the install. The file explains every
+value, and the installer's log (`Logs/ClusterIntegration.log`) lists what it read.
+
+A line that stays commented out changes nothing. An update does not overwrite your
+`settings.txt`. The single files of earlier versions (`enable_carplay_altscreen.txt`,
+`altscreen_conf.txt`) keep working; a line in `settings.txt` wins over them.
+
+### The next turn in Audi's box and on the head-up display (new)
+
+For software `P2711` and `P2873`. Off until you switch it on:
+
+| Line in `settings.txt` | What you get |
+|---|---|
+| `turn_box=1` | The phone's next turn in Audi's own box next to the right dial: arrow, distance, street and arrival time. With CarPlay and with Android Auto. |
+| `turn_box_on_map=0` | The box makes way while the cockpit shows the phone's map (the iPhone draws its own turn card there) and is there in the other cockpit tabs. With `1` it shows in every tab. |
+| `hud_navigation=1` | Arrow and distance on the head-up display. |
+| `destination_flag=1` | Audi's picture with the flag for the last 200 m before the destination. |
+
+- These put a small hook into Audi's navigation program. If the Audi navigation does not
+  behave as before, set the lines back to `0` and insert the card again; that takes the hook
+  out.
+- Tested so far: the box and the flag in an A6 C8 on P2711, the head-up display arrow in a
+  Q8 on P2711. On P2873 it has not been confirmed on a car yet; please report how it goes.
+- Android Auto gives no arrival time, so the box shows arrow and distance only there.
+- On other software versions `hud_navigation=1` shows the street name only, and the box is
+  left out.
+
+### The CarPlay picture
+
+- **Free the map:** with the box on, the iPhone's own turn card and arrival line say the same
+  thing twice. `map_turn_card=0` and `map_arrival_line=0` leave the map alone.
+- **Fit the picture:** if the cockpit of your model hides part of the iPhone's cards, set
+  `map_area_large` and `map_area_small` (left, top, width, height) as described in the file.
+- **Picture ends too early** (Audi Q3 with the Virtual Cockpit Plus): `cockpit_size=1920x722`.
 
 ## Feedback
 
 Most helpful:
 
 - Photos of the cockpit.
-- The files `Logs/ClusterIntegration.log` and `Logs/altscreen-sessions.log` from the card.
+- The folder `Logs` from the card, above all `ClusterIntegration.log` and
+  `altscreen-sessions.log`, with the turn box or the head-up display also `hud-feed.log`.
   Please look through them before sending, the first one contains data about your MMI. The
   car copies its logs to the card whenever the card is inserted, so for a problem while
   driving insert the card once more afterwards.
-- A short description: car, MMI version, iPhone/iOS version, and what happens or doesn't.
+- A short description: car, MMI version, phone and its software version, and what happens or
+  doesn't.
 
-If the cockpit keeps showing the Audi map for more than a few seconds after start-up even
+If the cockpit keeps showing the Audi map for more than a few seconds after connecting even
 though CarPlay is running: please let me know how long it took.
 
 ## Remove
 
-- **Turn off only the CarPlay map:** delete `enable_carplay_altscreen.txt` on the card and
-  insert the card again, as for the install.
+- **Turn off only the CarPlay map:** `carplay_map=0` in `settings.txt`, then insert the card
+  again, as for the install.
+- **Turn off only the box or the head-up display:** set their lines in `settings.txt` to `0`
+  and insert the card again.
 - **Remove everything:** create an empty file `uninstall.txt` in the folder
   `Mods/ClusterIntegration` and insert the card again. Afterwards the MMI is back to factory
   state as far as this mod is concerned. NavCompassIgnore stays installed; to remove it too,
