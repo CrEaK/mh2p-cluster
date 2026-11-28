@@ -1,550 +1,136 @@
-# Android Auto and CarPlay Cluster Integration
+# CarPlay and Android Auto map in the Audi virtual cockpit (MH2p)
 
-Bridge Android Auto navigation from Porsche PCM5 / ~~VW / Audi~~ MH2P to instrument cluster displays.
+Puts the phone's own navigation map into the Audi virtual cockpit, in place of the Audi map: Google Maps, Apple Maps or Waze through CarPlay, and Google Maps through Android Auto. It is the map the phone lays out for a car's instrument cluster, with turn card, distances and arrival time, and not a copy of the MMI screen. Installed from one SD card, removed the same way.
 
-> **Donate to charity** https://www.justgiving.com/
+![Google Maps through CarPlay in the cockpit of an A6 C8](docs/img/cockpit-a6c8-carplay.jpg)
 
-> **Status:** Beta (beta2_candidate_90d0b76) — Testing compatibility across Porsche Cayenne, Macan, Panamera and 911
+*Google Maps through CarPlay in an Audi A6 C8.*
 
-> **Download (Porsche)** [ClusterIntegration_v0034_beta2_candidate_90d0b76.zip](https://github.com/jonny190/mh2p-cluster/raw/main/builds/ClusterIntegration_v0034_beta2_candidate_90d0b76.zip)
+> **Status: beta.** For MMI software `MH2p_…_P2711` and `MH2p_…_P2873`. Use at your own risk.
 >
-> **Download (Audi MH2p, experimental)** [ClusterIntegration_v0034_beta2_candidate_90d0b76_audi.zip](https://github.com/jonny190/mh2p-cluster/raw/main/builds/ClusterIntegration_v0034_beta2_candidate_90d0b76_audi.zip) and read the [Audi section](#audi-mh2p-e-tron-and-other-mlbevo-audis--experimental) first. The Porsche package aborts on an Audi with "Not a Porsche head unit", and copying only the scripts from `modkit/` over it is not enough: the Audi installer also needs `Update/aa_only/` and `Update/audi/`, which are part of the Audi zip.
+> **Download:** [Releases](https://github.com/CrEaK/mh2p-cluster/releases) · **Guide:** [English](docs/carplay-cockpit/GUIDE-EN.md) · [Deutsch](docs/carplay-cockpit/ANLEITUNG.md) · **Questions and reports:** [Issues](https://github.com/CrEaK/mh2p-cluster/issues)
 
----
+This project is built on [fifthBro/mh2p-cluster](https://github.com/fifthBro/mh2p-cluster), which brought Android Auto and CarPlay navigation to the instrument cluster on Porsche PCM5. See [Thanks](#thanks).
 
-## Overview
+## What you get
 
-Translates Android Auto and Carplay navigation events into BAP (Bedien-und Anzeigeprotokoll) messages for real-time turn-by-turn navigation on your instrument cluster. Native navigation monopolizes the cluster — this changes that.
+- **CarPlay map in the cockpit**, wireless or by cable, in the large-map view and between the large gauges, in the layouts Classic, Dynamic and Performance.
+- **Android Auto map in the cockpit** (by cable), Google Maps across the full width.
+- **Zoom with the steering-wheel roller** (CarPlay: Google Maps and Apple Maps; Waze ignores it). Each cockpit view remembers its zoom.
+- The map **stays in the cockpit** while the MMI shows the radio, the reverse camera or Audi menus (CarPlay).
+- The map **follows day and night**.
+- A **Smartphone Map** checkbox in the cockpit menu *Navigation* switches back to the Audi map.
+- The Audi zoom scale and the traffic and satellite logos are hidden over the phone's map.
+- LawPaul's NavCompassIgnore is included, so the cockpit does not switch to the compass when a route starts.
 
-- Intercepts Android Auto navigation events via DSI and Carplay vis RGI (thanks to https://github.com/luka-dev/mib2q-carplay-rgi/)
-- Converts them to BAP protocol messages
-- Sends to cluster via `CombiBAPServiceNavi`
-- Overrides native navigation with configurable heartbeat (default 2s)
-- Supports both Google Maps and Waze
+In testing, not in a release yet:
 
----
+- **The phone's next turn in Audi's own box** next to the right dial (arrow, distance, street, arrival time), also in the cockpit tabs that show no map.
+- **Arrow and distance on the head-up display**, and Audi's picture with the flag near the destination.
+- Switches for what the iPhone draws on the cockpit map (its turn card, its arrival line).
+- A fixed cockpit size for cars where the picture ends too early (Q3 with the Virtual Cockpit Plus).
 
-## Features
+## Tested vehicles
 
-- **Full navigation support** — turn arrows, distance, road names, roundabouts, highway exits
-- **Real-time updates** — proximity-zone throttling (veryFar→now) with heartbeat to override native nav
-- **Unit detection** — automatic km/mi and LHD/RHD detection via platform services with JSON country fallback (60+ countries)
-- **JSON configuration** — runtime-configurable without recompilation; override via USB/SD card
-- **Comprehensive logging** — dual-timestamp log with optional privacy hashing and external USB/SD output
-- **Java 1.4 compatible** — runs on the embedded QNX/OSGI platform without modern Java features
+What people have reported so far. A tick means the map shows in the cockpit and was driven with.
 
----
+| Car | MMI software | CarPlay map | Android Auto map | Reported by |
+|---|---|---|---|---|
+| A6 C8 | `MH2p_ER_AUG35_P2711` | ✓ wireless and by cable | ✓ | development car |
+| A6 C8 2019 (US), head-up display | `MH2p_US_AUG35_P2711` | ✓ wireless | not reported | pbalazaar |
+| A6 C8 | P2711 | not reported | ✓ | ImSundee |
+| A6 C8 2020 | `MH2p_AS_AUG35_P2873` | ✓ wireless and by cable, all three layouts | not reported | brian06100227 |
+| A6 C8 | `MH2p_ER_AUG35_P2873` | not reported | ✓, the picture smears at times ([#4](https://github.com/CrEaK/mh2p-cluster/issues/4)) | Lucain872 |
+| S6 C8, head-up display | `MH2p_ER_AUG35_P2873` | ✓ | not reported | tester-02 |
+| e-tron 55, 2020 (UK, right-hand drive) | `MH2p_ER_AUG35_P2711` | ✓ wireless | ✓ | ap-hyperbole |
+| e-tron 2019 | `MH2p_AS_AUG35_P2711` | ✓ | not reported | holyglory0215 |
+| e-tron 2020 | not stated | ✓ wireless, cards sit a little towards the middle ([#8](https://github.com/CrEaK/mh2p-cluster/issues/8)) | not reported | CrociStrike030 |
+| Q8 2019 | not stated | ✓ | not reported | Eazyeric911 |
+| Q8 2019, head-up display | P2711 | ✓ wireless | not reported | Alex1907 |
+| Q3 with Virtual Cockpit Plus | P2711 | ✓ with a test package that sets the cockpit size ([#6](https://github.com/CrEaK/mh2p-cluster/issues/6)) | not reported | RayaneAm |
+| Q7 | P2711 | not reported | ✓ | Bhushan Ahire |
 
-## Architecture
+Known not to work: a unit where another patch replaced the MMI's start program, so the SD ModKit cannot set up its part that runs at every boot ([#9](https://github.com/CrEaK/mh2p-cluster/issues/9)).
 
-`ClusterIntegration` is a single Java class (Java 1.4 compatible) that bridges the Android Auto DSI, Carplay RGI event stream to the Porsche instrument cluster BAP navigation protocol.
+The features in testing have run on fewer cars: the turn box on the development A6 (P2711), the head-up display arrow on Alex1907's Q8 (P2711).
 
-### Data Flow
+**Your car is not in the list?** If it works, or does not, please open an [issue](https://github.com/CrEaK/mh2p-cluster/issues) with car, model year, MMI software version and phone, and it goes into this table. On other software versions than P2711 and P2873 CarPlay keeps working, but the cockpit keeps the Audi map: each version has to be checked against its own files first. If you want to help with yours, contact me through an issue.
 
-```
-Android Auto (Phone)
-        |
-    DSI Events (Navigation, Media)
-        |
-AndroidAutoClusterIntegration
-    +-- navFocusRequestNotification   -> start/stop heartbeat, set RGType
-    +-- updateNavigationNextTurnEvent -> convertToBAPManeuver -> updateManeuverDescriptor
-    +-- updateNavigationNextTurnDistance -> rate-limit -> unit convert -> updateDistanceToNextManeuver
-    +-- Heartbeat Timer (every 2s)   -> resend cached maneuver+distance
-        |
-CombiBAPServiceNavi (OSGi)
-        |
-Instrument Cluster
-```
+## Install
 
-### Service Injection
+Short version; the [guide](docs/carplay-cockpit/GUIDE-EN.md) has every step ([Deutsch](docs/carplay-cockpit/ANLEITUNG.md)).
 
-All platform services are injected via setters after construction:
+1. Check the MMI software version under *Settings → System information → Version*. It must say `MH2p_…_P2711` or `MH2p_…_P2873`.
+2. Download the zip of the latest [release](https://github.com/CrEaK/mh2p-cluster/releases) and unzip its **contents** onto an empty FAT32 SD card.
+3. Ignition on, insert the card. The MMI restarts and installs. When it says it will restart normally and the screen goes black, pull the card out.
+4. Connect the phone and start a route.
+5. **Keep the card.** It holds the backups that are needed to uninstall.
 
-| Service | Purpose |
+To update, unzip the new version over the same card and insert it again.
+
+## Options
+
+Empty files in `Mods/ClusterIntegration/` on the card switch parts on and off. The ones most people need:
+
+| File on the card | What it does |
 |---|---|
-| `CombiBAPServiceNavi` | BAP cluster output — maneuver, distance, RGStatus, destination |
-| `ISysServices` | Unit system detection, car clock, car type/variant detection |
-| `ICarCoreServices` | Drive-side detection via `configuration().airConditionMaster().driverSideLeft()` |
-| `StorageMountHandler` | Remounts USB/SD R/W for external log writing |
-| `ICarStatisticsService` | Injected but not currently used in active code |
+| `enable_carplay_altscreen.txt` | The CarPlay map in the cockpit. Already in the package. |
+| `altscreen_conf.txt` | Settings for the CarPlay map: picture areas per cockpit layout, zoom, what the iPhone draws. |
+| `uninstall.txt` | Removes the mod and restores the backups. |
 
-### AA Event → BAP Maneuver Translation
+All files and settings, including the ones in testing: [docs/options.md](docs/options.md).
 
-Maps Android Auto `eventCode` (1–19) + `turnSide` + `angle` + `num` to a BAP maneuver descriptor. Direction is a 0–255 byte (0=straight, 64=left/90°, 128=back/180°, 192=right/270°).
+## Remove
 
-| Event(s) | Translation |
-|---|---|
-| `event=3–5` (turns) | TURN, direction from `angle` or fallback to `turnSide` |
-| `event=6` (U-turn) | UTURN |
-| `event=7` (on-ramp) | TURN_ON_MAINROAD, direction from `turnSide` |
-| `event=8/10` (off-ramp/merge) | EXIT_LEFT or EXIT_RIGHT based on `turnSide`; side=0 → FOLLOW_STREET |
-| `event=9` (fork) | FORK_2 |
-| `event=14` (STRAIGHT/KEEP) | `num==1` = Waze lane-keep → FOLLOW_STREET; `num==0` or `num>1` = motorway exit → EXIT_LEFT/RIGHT |
-| `event=11–13` (roundabout) | ROUNDABOUT_TRS_LEFT/RIGHT. RHD correction: `(540−angle)%360`; LHD: `(angle+180)%360`. T-junction: 180°→0° when exit ≤ 2 |
-| `event=16/17` (ferry) | FERRY |
-| `event=19` (destination preview) | Sets flag, falls through as FOLLOW_STREET. DESTINATION symbol shown only on `event=0 valid=2` |
+- **Only the CarPlay map:** delete `enable_carplay_altscreen.txt` on the card and insert the card again.
+- **Everything:** create an empty file `uninstall.txt` in `Mods/ClusterIntegration` and insert the card again. NavCompassIgnore stays; an `uninstall.txt` in `Mods/NavCompassIgnore` removes it too.
 
-### Distance Update Pipeline
+## Reporting a problem
 
-1. **Throttle check** — minimum ms between sends per proximity zone (veryFar=2000ms  to now=100ms). In "always" bargraph mode, bargraph-only updates bypass the throttle.
-2. **Maneuver change detection** — key = `road|eventCode|turnSide`. New maneuver resets baseline distance and bypasses throttle for first update.
-3. **Distance threshold** — minimum change required per zone (100m at veryFar  to 5m at now) before text updates. Bargraph always updates for smooth fill.
-4. **Unit conversion** — metric: m below 100m, tenths of km to 19.9km. Imperial: yards below 161m, tenths of miles to 9.9mi.
-5. **Bargraph** — `(1 − distance/maneuverInitialDistance) × 100`, clamped 0–100.
-6. **Roundabout traversal** — force distance/bargraph to 0 during CONTINUE events to suppress erratic display inside roundabout.
+Open an [issue](https://github.com/CrEaK/mh2p-cluster/issues) with:
 
-### Heartbeat
+- car, model year and MMI software version
+- phone and iOS or Android version, CarPlay wireless or by cable
+- what happens, ideally with a photo
+- the folder `Logs` from the card. The car copies its logs to the card whenever the card is inserted, so after a problem while driving insert it once more. Look through the files first: `ClusterIntegration.log` contains data about your MMI.
 
-A daemon timer fires every `heartbeatInterval` ms (default 2000ms) while navigation is active. It resends the last cached maneuver, distance, bargraph, and destination data to continuously override the cluster's native navigation display.
+## Known limits
 
-### Unit & Drive-Side Detection (3-tier each)
+- Only P2711 and P2873 so far.
+- The iPhone never reports its zoom back, the mod counts roller steps. If the zoom of a view is off, zoom once by hand and it is remembered again.
+- Android Auto gets its layout once per connection, so one layout serves both cockpit views, and its cockpit map goes off while the MMI shows something else.
+- Android Auto: the picture can smear on some cars ([#4](https://github.com/CrEaK/mh2p-cluster/issues/4)).
+- Now and then the CarPlay map does not come right after connecting; reconnecting brings it.
 
-| Priority | Units | Drive side |
-|---|---|---|
-| 1 (highest) | `forceImperial` config flag | `forceRHD` config flag |
-| 2 | `ISysServices.units().distance().setting()` (1=km, 2=mi) | `ICarCoreServices.configuration().airConditionMaster().driverSideLeft()` |
-| 3 | JSON `countries` table via locale/system properties | JSON `countries` table `rhd` field |
-| 4 (default) | Metric | LHD |
+## How it works, and more
 
-### Bargraph Auto Mode — Car Variant Detection
+- [docs/how-it-works.md](docs/how-it-works.md): the parts and how they fit together
+- [docs/options.md](docs/options.md): every file on the card and every setting
+- [docs/audi-notes.md](docs/audi-notes.md): the detailed technical record of the Audi work, car by car and date by date
+- [docs/development.md](docs/development.md): building and testing
+- [docs/porsche.md](docs/porsche.md): the original project's README for Porsche PCM5
 
-When `bargraphMode="auto"`, the car type is queried at runtime via `sysServices.config().carType()`:
+## Thanks
 
-| Car | carClass | generation | Resolved mode |
-|---|---|---|---|
-| Cayenne E3 | 5 | 3 | `"always"` |
-| 911 992 | 6 | 8 | `"always"` |
-| Panamera G2 | 6 | 2 | `"always"` |
-| Macan | 4 | 1 | `"distance"` |
-| Unknown | any | any | `"always"` (safe default) |
+**fifthBro** made this possible. [fifthBro/mh2p-cluster](https://github.com/fifthBro/mh2p-cluster) is the original project: the bridge from Android Auto and CarPlay navigation to the instrument cluster on Porsche PCM5, with its Java integration, the Android Auto hook, the CarPlay turn hook, the cluster video daemon and the installer. This fork runs on that code and those programs every day; the Audi work only adds to it. fifthBro's [mh2p-ssh-access](https://github.com/fifthBro/mh2p-ssh-access) is what made developing in the car practical. Thank you.
 
-Explicit JSON values always override auto-detection.
+Also:
 
-### Roundabout Latching
+- **jonny190** for the Audi e-tron port this fork started from: the installer for the Audi unit's trimmed tool set, the stand-in class, the splash and cluster entry tools and the test harness. https://github.com/jonny190/mh2p-cluster
+- **Bhushan Ahire (bhushangahire)** for the Audi Q7 profile: `KombiMapGuard`, the decoder ring-start and single-daemon fixes, and the cluster entry that reaches the phone. https://github.com/bhushangahire/mh2p-cluster
+- **LawPaul** for the MH2p SD ModKit, which installs all of this, and for NavCompassIgnore; both are included unchanged. https://lawpaul.github.io/MH2p_SD_ModKit_Site/
+- **luka-dev** for the protocol knowledge in mib2q-carplay-rgi and the QNX toolchain image. https://github.com/luka-dev/mib2q-carplay-rgi/
+- **OneB1t** (Android Auto and VNC to MIB2 rendering, https://github.com/OneB1t/VcMOSTRenderMqb), **adi961** (turn-by-turn to the virtual cockpit, https://github.com/adi961/mib2-android-auto-vc) and **litdreams10** (platform knowledge, Android Auto testing), credited by the original project.
+- **domihirtl** for one zoom per cockpit view.
+- **Yasar** for the dumps from a P2873 unit. Without them that software version would not be supported.
+- **Alex1907** for testing the head-up display over many rounds, with photos and logs each time.
+- **Treuce** and **tearfalls1987** for testing and field notes on P2873.
+- Everyone who tested, sent logs, photos and dumps: brian06100227, pbalazaar, ap-hyperbole, Eazyeric911, Lucain872, RayaneAm, tester-02, ImSundee, holyglory0215, CrociStrike030 and others.
 
-Android Auto sends EXIT (event=13) first, then CONTINUE (event=12) × N through the roundabout. Latching caches the exit direction on event=11/13 and reuses it for all subsequent event=12 updates, preventing the arrow from flickering. Cleared on any non-roundabout event. Configurable via `enableRoundaboutLatching`.
+The Audi A6 C8 work in this fork (CarPlay map video, the hand-back to the Audi map, steering-wheel zoom, cockpit layouts, the turn box and the head-up display arrow) is by [CrEaK](https://github.com/CrEaK).
 
-### Logging
+## Licence
 
-Two parallel log files: **plain** (full road names) and **hashed** (road names, music metadata replaced with `[HASH_nnn]` for privacy). Each entry has a dual timestamp: QNX boot time + real car clock from `ISysServices.clock().localTime()`. When `enableExternalLogging=true`, logs are written to USB/SD if writable, with automatic fallback to `/tmp`.
+Free and not for sale. The project is under [CC BY-NC-SA 4.0](LICENSE.md), like the original. The parts written for this fork (`src/altscreen/`, `src/navhook/`, `nav/HudTurnFeed.java`) are GPL-3.0-or-later, as their file headers say.
 
----
-
-## Installation
-
-**Based on MH2p Mod Kit** https://lawpaul.github.io/MH2p_SD_ModKit_Site/
-
-> **Warning:** This modifies Java files on your PCM5/MH2P unit. Only proceed if you understand the risks.
-
-**Prerequisites:**
-- Car with PCM5/MH2P (Porsche tested; Audi MH2p experimental, see [Audi MH2p](#audi-mh2p-e-tron-and-other-mlbevo-audis--experimental))
-- SD card
-- Android Auto phone
-- Android Auto <a href="https://lawpaul.github.io/MH2p_SD_ModKit_Site/">activated </a>
-
-**Installation:**
-- Download latest release
-- Format SD card as FAT32
-- extract  file to the root of SD card
-- start vehicle
-- insert the SD card
-- within few seconds, MH2p will reboot
-- update installs automatically
-- when update is done installing, a prompt will say "Please remove update media"
-- remove update media from vehicle
-- MH2p will reboot into normal mode with mods installed/uninstalled
-
-**Build:**
-Edit build script with paths in your environment and run: 
-recompile.sh
-or
-recompile.bat
-
-**Deploy and test:**
-The easiest way is to just scp it to the target if you <a href="https://github.com/fifthBro/mh2p-ssh-access">enbaled ssh access</a>
-
----
-
-## Audi MH2p (e-tron and other MLBevo Audis) — experimental
-
-> **Audi Q7 (P2711) profile:** full-width map in the Virtual Cockpit with the car marker above Audi's bottom bar, native-map hiding, and fixes for a black cockpit and repeated reconnects. See [audi/q7-p2711](audi/q7-p2711/README.md).
-
-> **Status:** running on an e-tron 55 (`MH2p_ER_AUG35_P2873`, UK, RHD): the shadowed Java class loads, turn-by-turn services are found, the phone streams the cluster map and the virtual cockpit shows it; the cockpit fit is solved; what is being tested now is the hand-back to the Audi map when Android Auto ends (see [Handing the cockpit back](#handing-the-cockpit-back-to-the-audi-map-when-android-auto-ends)). The port changes the install gate and packaging: the native binaries and the config are byte-identical to the Porsche release except for three verified byte patches the package build applies (the boot splash image inside `cluster` from `modkit/splash/splash.png`, see [Changing the cockpit loading splash](#changing-the-cockpit-loading-splash); the decoder ring-start fix from PR #11 inside `cluster`, `modkit/patches/cluster.patches.txt`; and the 54-byte cluster display entry inside `gal_cluster.so` from `modkit/template/template.txt`, see [Fitting the map](#fitting-the-map-to-the-e-trons-cockpit)), the Java classes are the release classes (on Audi the installer uses a copy of the JAR with the CarPlay classes dropped) plus two added classes, a no-op stand-in for the Porsche-only `StorageMountHandler` that the Audi HMI does not ship and `KombiMapGuard`, which hides the Audi map while the video renders and gives the cockpit back to it afterwards, and a rebuilt `AndroidAuto2Subsystem` that starts it.
-
-### Why it might just work
-
-The Porsche PCM5 HMI is built on Audi's framework: every platform class this mod touches lives in `de.audi.*` packages (`CombiBAPServiceNavi` for the cluster's BAP navigation protocol, `ISysServices`, `ICarCoreServices`, the navigation bundle's `IMapClusterService` whose methods talk about the "Kombi", Audi's word for the instrument cluster), and Android Auto runs in the same `gal` process. Nothing in the Java layer or the native hooks checks for Porsche; only the ModKit install script did. The turn-by-turn path (arrows, distance, road name over BAP) has the best odds, because it only uses those shared services. The cluster video path additionally assumes the head unit drives the cluster as QNX displayable `33`. That is known for Porsche and looks right for MH2p Audis: Audi's own service training for the MIB2+ A8 (eSelf-Study Program 990293) states that the virtual cockpit "receives image data from J794 [the MMI main unit] via LVDS and MOST bus", with LVDS carrying "the large navigation map and the detailed intersection maps", which is the same head-unit-rendered cluster map architecture the mod relies on. A public, research-only analysis of an Audi Q3 F3 image with the same `MH2p_ER_AUG35_P2873` firmware (github.com/Dezoxy/audi-mh2p-p2873-research, report 02) found `DISPLAYABLE_KOMBI_MAP_VIEW = 33` in that HMI's display-management constants, the same `switchKombiMapToHiddenContext()` map-control methods, a cluster display on `LVDS2`, and all 61 symbols `gal_cluster.c` imports resolving against that image's receiver, protobuf and screen libraries; it states that nothing in it has run on a vehicle, and it does not compare object layouts or Java constructors with Porsche. Upstream has not answered the two Audi requests on its tracker (issue #8, an A6/A7 on P2711, closed without comment; issue #16 open), so treat every step below as the first public attempt.
-
-Prerequisites specific to Audi: the head unit must be MH2p (MMI version string `MH2P_..`; MY2021+ e-trons are MIB3 with 3xxx firmware and out of scope), and Android Auto must already work. LawPaul's ModKit page lists the e-tron as supported with "extra steps for Apple CarPlay or Android Auto"; those steps are not public, so get Android Auto activated first and only then install this mod.
-
-Two different things have to line up in the `gal` hook, and they carry different risk. The C++ symbol names it interposes come from Google's receiver library (`libautoreceiver.so`) and have stayed stable across VW-group generations; the installer now checks them on your unit and a missing one only makes that hook a silent pass-through. The object layouts it pokes (the message router's endpoint table, the `shared_ptr<IoBuffer>` it reads on every incoming message) were taken from the Porsche binary and can only be tested on the car; a mismatch there can crash `gal`, which is why the diagnostic first boot below exists.
-
-### What the Audi package changes
-
-- `install.sh` accepts `OEM=AU` in addition to `PO`. Firmware build numbers are one VAG-wide counter, so the Audi range is 26xx / 27xx / 28xx: public e-tron GE strings are `MH2p_ER_AUG35_P2711`, `P2718`, `K2716_1` and `P2873` (EU) and `MH2P_US_AUG35_P2711` (US); the firmware trains listed on mib-helper.com for AUG35 are K2470, P2711, P2718, K2716, P2873 and P9805. An e-tron still on the 2019 launch build `K2470` is outside the accepted range; update the MMI first, or use `force_install.txt` knowingly. `P2873` sits in the same build window as the Porsche `P2870` / `P2874` the hooks were built against and is the best-case target; the 27xx builds are older and untested, so the installer prints a warning for any Audi build outside 28xx. Units without a TYPE code (`MH2p_ER_AU_P2873`, Q3 and A1) parse fine.
-- Other OEMs and out-of-range firmware still abort. `Mods/ClusterIntegration/force_install.txt` on the SD card overrides the OEM and firmware gate for people who know what they are doing.
-- A preflight check aborts before changing anything if `/mnt/app/eso/hmi/lsd/jars` or `/mnt/app/eso/bin/apps` is missing.
-- Every change is recorded in `Mods/ClusterIntegration/Update/Backup/manifest.txt` with the backup copy it made (see [Backups and rollback](#backups-and-rollback)).
-- On Audi, CarPlay support is opt-in via `Mods/ClusterIntegration/enable_carplay.txt`. Without it the installer uses `Update/aa_only/*_aa.jar`, a copy of the release JAR without the `carplay` package, so the stock classes shadowed are `AndroidAuto2Subsystem` and `AndroidAuto2EventListener` and Audi's own `CarPlayDSIManager` keeps running CarPlay; the `dio_manager` wrapper and hook are not installed either. The CarPlay hook rewrites every iAP2 Identify inside the wireless CarPlay process using Porsche-derived object layouts, and the CarPlay shadow class replaces Audi's whole CarPlay DSI manager; on an untested unit either can break CarPlay outright, and neither does anything for Android Auto. Porsche installs everything as before. On an e-tron P2873 image this is not a precaution but a necessity: `javap` against the unit's own `lsd.jar` shows the full JAR's CarPlay classes calling constructors that do not exist there (`CarPlayDSIManager` inner classes, `CarplayRequest`, `CarPlaySpeechRequestHandler`), so `enable_carplay.txt` is known to break CarPlay on that firmware.
-- The mod's `AndroidAuto2Subsystem` constructs `de.audi.app.car.adi.legacy.sportchrono.StorageMountHandler`, a Porsche-side class ("Sport Chrono") that the Audi HMI image does not contain (verified on an e-tron P2873: the whole `de/audi/app/car/adi` package is absent from `lsd.jar`). Without it the shadowed class dies with `NoClassDefFoundError` and takes Android Auto with it. The Audi package therefore carries `Update/audi/ClusterIntegration_StorageMountHandler_stub.jar`, a no-op stand-in (source and build script under `modkit/stub/`, class-file version 48 like the HMI's own classes) that the installer adds to `/mnt/app/eso/hmi/lsd/jars` on Audi; `lsd.sh` puts every jar in that directory on the JVM boot class path ahead of `/ifs/lsd.jxe`. It is skipped when the installer can see the real class in the HMI image, or when `Mods/ClusterIntegration/no_stub.txt` exists; the uninstaller removes it with the mod's other jars. A card without the `audi/` folder keeps an already installed stand-in, and on a unit that has none the installer aborts before changing anything. The only thing the stand-in gives up is the mod's optional remount of the SD card for its own log file.
-- The Android-Auto-only JAR also carries `nav/KombiMapGuard` (source under `lsd/`, see [Handing the cockpit back](#handing-the-cockpit-back-to-the-audi-map-when-android-auto-ends)) and a rebuilt `AndroidAuto2Subsystem` that starts it. `modkit/build_aa_jar.sh` compiles the two from `lsd/` with the Eclipse compiler at `-target 1.4` (class-file version 48, `StringBuffer` concatenation, no class literals: what the HMI's J9 JVM loads) against the unit's stock classes, and replaces them in the derived jar; `build_sd_package.sh` runs it. Before the rebuild was trusted, the release `AndroidAuto2Subsystem` was compared with the class compiled from `lsd/` (`javap -c`, both compilers' idioms normalised): same fields, methods, strings, calls and branches, so the source is current for that class. The other release classes are still used as shipped.
-- Per-car settings can be baked into the installed config from the card: `Mods/ClusterIntegration/config_overrides.txt` holds `key=value` lines (JSON values) that the installer applies to the top-level `config` block of `cluster_config.json` (plain keys such as `forceRHD`, or `gal_h264.mode`, `gal_h264.codecRes`, `mirror.zoomX` for the inline video objects that apply when `carConfig` has no entry for the car) and records in the manifest; `config_overrides.example.txt` ships next to it with the useful keys commented out. Re-running without the file reinstalls the shipped config.
-- Marker files next to `Update/` on the card: `force_install.txt` (skip the gate), `diag.txt` (diagnostic mode), `enable_carplay.txt` (CarPlay hook and full JAR on Audi), `enable_carplay_hook.txt` (CarPlay turn-by-turn hook with the Audi JAR), `enable_carplay_altscreen.txt` (CarPlay map video in the cockpit, see [CarPlay map in the cockpit](#carplay-map-in-the-cockpit-altscreen)), `config_overrides.txt` (config values, including `gal_h264.*` / `mirror.*`), `gal_env.txt` (environment for the Android Auto hook: live logging), `daemon_log.txt` (start the cluster daemon with `verbose=2`, which writes `cluster_daemon.log` to the first writable USB stick or `/tmp`; off by default since PR #11), `cockpit_size.txt` (one line `WIDTHxHEIGHT`, e.g. `1920x722`: the daemon uses that size for the cockpit display instead of detecting it; for cars where it picks the MMI screen, such as the Audi Q3 with the Virtual Cockpit Plus, where the picture otherwise ends at 1540 pixels), `carplay_turns.txt` (trial, with `enable_carplay_altscreen.txt`: the turn-by-turn hook is loaded next to the map hook, so CarPlay turn data reaches the JAR), `hud_arrows.txt` (trial: the phone's next turn on the head-up display, see [Turn arrows on the head-up display](#turn-arrows-on-the-head-up-display-trial)), `no_stub.txt` (Audi: do not install the StorageMountHandler stand-in), `uninstall.txt` (ModKit convention: run the uninstaller).
-- `uninstall.sh` no longer checks the OEM. It only restores what the mod changed, so it is safe everywhere. `Update/rollback.sh` runs it over SSH without the ModKit.
-
-The scripts are tracked under `modkit/`, and `modkit/build_sd_package.sh` rebuilds a flashable zip from any release zip (deriving the Android-Auto-only JAR as it goes); `modkit/check_hmi_signatures.sh` compares the shadowed classes against a unit's stock jars with `javap`:
-
-```
-modkit/build_sd_package.sh builds/ClusterIntegration_v0034_beta2_candidate_90d0b76.zip \
-                           builds/ClusterIntegration_v0034_beta2_candidate_90d0b76_audi.zip
-```
-
-### Verified against an e-tron P2873 image
-
-Checked with `javap` against classes pulled from `/mnt/app/eso/hmi/lsd/lsd.jar` of an e-tron 55 on `MH2p_ER_AUG35_P2873` (HMI `HMI_AU_MIB2P_H_ER_G35_C27_214801`, "MIB2P_HIGH EUROPE", J9 1.18):
-
-- `AndroidAuto2Subsystem`: the 18-argument constructor and the constructors of all 15 inner classes are identical to the stock Audi ones, and every method or field the stock constructor touches is also touched by the mod's constructor (the mod adds its cluster integration on top). The only apparent stock-only member is `addRequestModeChanges`, which the mod has too, minus the generic signature. `AndroidAuto2EventListener` has the stock constructor signature but not the stock constructor body: the mod's copy subscribes the DSI attributes {3, 5, 6, 7, 8}, the Audi stock one only {3, 5, 6}, and 7 and 8 are the next-turn event and the distance to the next turn. The first Audi package left that class out as a "pure stock copy" (a signature comparison cannot see the difference), which is why no `BAP_MANEUVER` line ever appeared; the class is back in the Android-Auto-only JAR. The stock classes are class-file version 46 and 48; the mod's and the stand-in are 48.
-- `StorageMountHandler`: the `de/audi/app/car/adi` package does not exist in the Audi image, so the stand-in jar is required there.
-- CarPlay: the full JAR's `carplay` package does not link against this image. `CarPlayDSIManager` carries 44 members the mod copy lacks, seven of its inner classes have different constructors, and the mod's `CarplayRequest`, `RequestModeChangeAudio` and `CarPlaySpeechRequestHandler` call constructors the Audi classes do not have. Leave `enable_carplay.txt` off on this firmware.
-- Boot class path: `/mnt/app/eso/hmi/lsd/lsd.sh` runs `find $LSD_DIR/jars/ -name '*.zip' -or -name '*.jar'` and appends every hit to `-Xbootclasspath` ahead of `/ifs/lsd.jxe`, with `-noverify`. That is what makes the mod JAR and the stand-in jar shadow the stock classes on Audi exactly as on Porsche.
-- Toolset: `grep` (no `-a`, no match inside binaries), `find`, `awk` and `sed` under `/mnt/app/armle/bin`, `wc` under `/mnt/app/armle/usr/bin`, `cut`, `head`, `sort`, `dd`, `pidin`, `slay`; missing `tr`, `sum`, `cmp`, `od`, `cksum`, `md5sum`, `unzip`, `strings`. The installer's probes, fallbacks and `skipped` semantics are built around that list.
-- First live run on the e-tron: the shadowed class loaded with the stand-in, `CombiBAPServiceNavi` and `PartialPopupBAPService` were found, the car key is `5_1` (no `carConfig` entry, global values apply), drive side came out RHD from the GB country lookup, the phone accepted the injected cluster display and streamed H.264, and the daemon found displays `id=1 2820x720` (both MMI screens as one surface) and `id=2 1920x722` (the virtual cockpit), bound its window there (`auto=ok`) and decoded and posted frames at 10 fps. Google Maps appeared in the cockpit. The Porsche boot splash (`splashscreen_000.canim`) is absent on Audi, which only costs the splash. `/tmp` is RAM (`/dev/shmem`), so copy the logs to the card before switching off. The HMI's `DSIMapViewerControl` instance 3 and `IMapClusterService` were not found by the release JAR's one-shot lookup (no `KOMBI_MAP:` lines); the hand-back class added since tracks the service by name instead, see [Handing the cockpit back](#handing-the-cockpit-back-to-the-audi-map-when-android-auto-ends).
-
-### Install on an Audi
-
-Do it in two passes. The first pass installs everything in diagnostic mode: the JAR runs turn-by-turn only (`enableMapRender` is set to `false` in the installed config), the Android Auto hook loads and logs but does not inject the cluster service, and Android Auto otherwise behaves as stock. That pass answers the three questions that matter (does the shadowed Java class load on Audi firmware, do the arrows reach the virtual cockpit over BAP, does the hook resolve its symbols) with the smallest possible blast radius. It does not remove every risk: the hook's `routeMessage` interposer reads the receiver's `shared_ptr<IoBuffer>` layout on every incoming message regardless of the diagnostic switch, so a layout mismatch can still crash `gal` in this pass (that is what the rollback paths are for). The second pass goes live with the video path.
-
-1. Extract the **Audi** zip, `builds/ClusterIntegration_v0034_beta2_candidate_90d0b76_audi.zip`, to an empty FAT32 SD card (not the Porsche zip, and not a Porsche card with the `modkit/` scripts copied over it: the installer needs the `Update/aa_only/` and `Update/audi/` folders that only the Audi zip and the tracked `modkit/Mods/` tree contain). Then create an empty file `Mods/ClusterIntegration/diag.txt`. For a right-hand-drive car, copy `Mods/ClusterIntegration/config_overrides.example.txt` to `config_overrides.txt` in the same folder and uncomment `forceRHD=true` (it fixes the roundabout arrow correction and Waze keep-lane side regardless of what the car reports). Android Auto must already be activated on the unit.
-2. Follow the normal Installation steps above. After the reboot, pull the card and read `Logs/ClusterIntegration.log`:
-   - `Head unit: release=MH2p_ER_AUG35_P2873 oem=AU type=G35 region=ER sw=2873 force=0` (your values will differ). `Aborting` means the gate refused, `ERROR` means the preflight or a backup check refused.
-   - `tools missing:` lists which of the probed commands (`grep find awk sed cut head wc sum cmp diff od dd`) the unit lacks; an e-tron on P2873 prints `sum cmp diff od` (it also has no `tr`, `cksum`, `md5sum`, `unzip` or `strings`, which the installer does not need), and its `wc` lives under `/mnt/app/armle/usr/bin`, which the installer now adds to its PATH. `file compare:` names the tool used to compare files: a real comparator, `wc` on an e-tron (byte, line and word counts plus the modification time for the already-current check; backups then log `backup verified: by size, line and word counts`), or `size only` when even `wc` is missing. `binary search:` names the command that passed a self-test for finding a class name inside a jar on this unit (`grep -a`, `grep` or `awk`), or `none`: the e-tron's `grep` has no `-a` and does not match inside binary files, and with `none` the class and symbol checks below are reported as `skipped` rather than as failures.
-   - every `install:` line names a file that was written; `Backups:` names the folder holding the originals; `diag mode: ON` confirms the staged mode.
-   - `stock AA class: AndroidAuto2Subsystem found in: ...` shows where the installer sees the stock class the mod shadows (`lsd/lsd.jar`, `/ifs/lsd.jxe` or a plugin jar); it is the control for the next line. `hmi class check: StorageMountHandler NOT found in ...` is the expected Audi result and is followed by `stand-in class: ON`; `found in` means the image has the real class and the stand-in is left out; `skipped` or an unreliable result (control class not seen either) also ends in `stand-in class: ON`, because the stand-in is the safe default on Audi (`no_stub.txt` turns it off). On Porsche the line is informational.
-   - `hook symbols: 14/14 present in ...` means the Android Auto receiver on your unit exports everything the hook interposes. Fewer means the missing hooks will silently do nothing; `skipped` means the library was not found or no command on the unit can search a binary file (`binary search: none`).
-3. Put the card back in, connect the phone, start navigation in Google Maps or Waze and drive a little. In this pass the virtual cockpit should already show Android Auto's turn arrows and distances through BAP (no map video yet). Then read the logs: `cluster.log` on the card must contain `SYS: Android Auto Cluster Integration Initialized`, `SYS: CombiBAPServiceNavi service AVAILABLE` and `DSI_IN:` lines; `/tmp/gal_preload.log` (SSH) must contain `gal diag mode:` and `gal preload: /mnt/app/eso/bin/apps/cluster/gal_cluster.so`; `/tmp/gal_cluster.log` must contain a `symbols: populate_sd=... sd_serialize=...` line with non-zero addresses and no crash. If Android Auto itself no longer starts, run `rollback.sh` (a `gal_exit:` with a non-zero code right after the preload line means the runtime linker refused the hook; no `SYS:` lines at all means the shadowed Java class did not load). With a route running, `DSI_IN: TURN_EVENT` and `DSI_IN: DISTANCE` lines must appear before any `BAP_MANEUVER` / `BAP_DISTANCE`; if they do not, the HMI is not delivering the navigation attributes (check that the installed JAR contains `AndroidAuto2EventListener.class`, and with `GAL_CLUSTER_SD_LOG=1` in `gal_env.txt` the hook logs `sdresp nav:` lines saying whether the head unit advertises a navigation-status service to the phone at all).
-4. Optional but recommended before going live: compare the shadowed classes against your unit's own with `javap`. The diagnostic install stages any small plugin jar that contains them in `Mods/ClusterIntegration/Update/Backup/hmi_reference/` on the card and, when it can search the image and finds the classes in `/mnt/app/eso/hmi/lsd/lsd.jar` (109 MB on an e-tron, not copied automatically), prints that path. On an e-tron the search is skipped (`binary search: none`) and the classes are in that `lsd.jar`; copy it over SSH into a folder of its own on the card (`mkdir /fs/sdb0/stockjars; cp /mnt/app/eso/hmi/lsd/lsd.jar /fs/sdb0/stockjars/`), the unit has no `unzip` to extract on that side. On a PC with a JDK, run `modkit/check_hmi_signatures.sh Mods/ClusterIntegration/Update/ClusterIntegration_v0034_beta2_candidate_90d0b76.jar stockjars` (the full JAR, so every shadowed class is compared); `MATCH` on `AndroidAuto2Subsystem` means the Audi firmware constructs the class exactly the way the mod's copy expects, `MISMATCH` shows the differing constructor and means the mod JAR will not load on this firmware without a rebuild, and the `PRESENT` / `ABSENT` line says whether the stand-in jar is needed (`UNKNOWN` means the folder does not hold the unit's HMI classes). For an e-tron P2873 image this has been done (see [Verified against an e-tron P2873 image](#verified-against-an-e-tron-p2873-image)).
-5. Go live: delete `Mods/ClusterIntegration/diag.txt` from the card and run the installation again. It is idempotent: it removes the marker and puts the shipped `cluster_config.json` (video path enabled) back. Reconnect the phone and start navigation.
-
-To get back into diagnostic mode later, put `diag.txt` back and run the installer again; it is the only way that also switches the installed config to turn-by-turn only.
-
-### First-boot checklist
-
-Logs are written to the SD card when `enableExternalLogging` is `true` (the default). With SSH access the same files are under `/tmp`.
-
-| Log | Where | What to look for |
-|---|---|---|
-| `cluster.log` | SD root, or `/tmp/cluster.log` | `SYS: CombiBAPServiceNavi ...` lines at boot prove the JAR loaded on Audi firmware. `CAR_VARIANT: no entry for X_Y` gives your car's `carClass_generation` key. `DSI_IN:` lines prove Android Auto events reach the bridge. |
-| `cluster_daemon.log` | SD root, or `/tmp/cluster_daemon.log` | `detect_disp: disp[n] id=.. size=..` lists every display the head unit drives. `display size: WxH (... auto=ok ...)` proves displayable 33 exists and reports the cluster video resolution; `auto=fail` means it was not found. `[daemon] start:` / `prepare` lines show the Java side driving the mirror. `NvMedia loaded OK` and `BeginSequence:` prove the H.264 decode path works. |
-| `gal_preload.log` | `/tmp` (SSH only) | `gal preload: /mnt/app/eso/bin/apps/cluster/gal_cluster.so` proves the wrapper injected the hook into the Android Auto process (`error preload:` means the file was missing); `gal diag mode:` shows the staged mode is active. |
-| `gal_cluster.log` | `/tmp` (SSH only; written in diagnostic mode, or with `GAL_CLUSTER_LOG=1` exported in the `gal` wrapper — the shipped v0034 hook reads `GAL_CLUSTER_LOG`, the repo source reads `GAL_CLUSTER_LOG_ALL`) | `symbols: populate_sd=... sd_serialize=...` with non-zero addresses proves the interposed symbols resolved. In live mode `cluster service built`, `sdresp: HYBRID` and `fake endpoint installed` prove the phone was offered the cluster display, and `cluster endpoint: onChannelOpened ch=14` proves it accepted it (the `svc_id=` printed by `handleChannelOpenReq` is layout-derived and may be wrong on Audi). Leave `GAL_CLUSTER_DECODE` unset: the in-hook decoder uses Porsche-only offsets; decoding happens in the `cluster` daemon. |
-
-If the turn-by-turn arrows work but the map video does not, the BAP path is fine and the problem is the video path (`gal_cluster.so`, `cluster` daemon, or displayable 33). If Android Auto itself stops working after install, the shadowed `AndroidAuto2Subsystem` class does not match the Audi firmware; uninstall as described below.
-
-### Tuning for your car
-
-Per-car values live in `cluster_config.json`. A copy at the SD card root (`/fs/sda0/cluster_config.json`) overrides the installed one for every reader while the card is inserted, which is handy for trying zoom and pan values without reflashing. It also silently overrides everything the installer wrote, including `config_overrides.txt` values and diagnostic mode's turn-by-turn-only setting, so use one mechanism or the other (the installer warns if it finds a root copy) and remove the root file when you are done. Take the key from the `CAR_VARIANT` log line and add an entry next to the Porsche ones (v0034 schema shown; older builds used a flat `mirrorCarConfig` block):
-
-```json
-"carConfig": {
-  "X_Y": {
-    "name": "e-tron GE", "bargraphMode": "always", "aaClusterMode": "h264",
-    "mirror":   { "mode": "fill",   "zoomX": 1.0, "zoomY": 1.0, "panX": 0.0, "panY": 0.0 },
-    "gal_h264": { "codecRes": 720,  "mode": "letter", "zoomX": 1.0, "zoomY": 1.0, "panX": 0.0, "panY": 0.0 }
-  }
-}
-```
-
-For a right-hand-drive car, set `forceRHD=true` through `config_overrides.txt` (or `"forceRHD": true` in the `config` block): drive side is otherwise read from the car's climate-control master position, with the country table as fallback, and it decides the roundabout angle correction and the Waze keep-lane side. Units follow the car's own km/mi setting; `imperialSmallUnit="yards"` only matters if the country lookup fails (GB already maps to yards). Without a car entry the global `config.mirror` and `config.gal_h264` values apply, which is a reasonable first try. The e-tron panel is 1920x720, but the size of the map window the MMI streams to it is unknown, so expect to adjust `gal_h264.mode` / zoom / pan. Note that the native `gal_cluster.so` picks its own per-car settings by Porsche part-number prefix (it queries the head unit's part number and knows 9Y1/9YA/992/971/95B), so on an Audi it uses its global or compiled defaults regardless of the `carConfig` key; the Java side still honours your entry. Fit and framing are tuned with `gal_h264.mode`, `zoomX`/`zoomY`, `panX`/`panY` and `codecRes` (720 or 480); `cluster capture=test verbose=1 zoomX=.. panX=..` over SSH draws a calibration pattern with the same numbers.
-
-If the daemon logs `auto=fail`, the QNX display whose integer id is `33` was not found. On the Audi image analysed above the cluster is listed as display 4 on `LVDS2`, so this may well happen, and it is not by itself fatal: the daemon's H.264 window is bound by name to displayable `33` (the id the Audi HMI itself uses for the cluster map) and sized to the video stream, and the auto-detected size only affects the test pattern and splash images. Try navigation with the phone before concluding. Only if the window reports `got_visible=1` yet nothing appears on the cluster is the named binding wrong too, and that needs a rebuild of `src/cluster.c` with a configurable displayable (`xres=`/`yres=` cannot fix it: they only size the test pattern and the blit rectangle inside the video-sized window, and values larger than the stream break the blit). `cluster capture=display verbose=1` lists every display with its id and size (Ctrl-C to stop).
-
-### Keeping the map in the cockpit while navigating (the compass)
-
-On the e-tron the map shows in the virtual cockpit while Android Auto is connected, but as soon as navigation starts the cockpit falls back to its compass. The stock `AndroidAuto2NavHandler` answers the phone's navigation-focus request by handing the HMI's NAVI application to the device (`requestDSIUpdate(NAVI, DEVICE)`), and the cockpit's navigation view then has no native map to show. LawPaul's [MH2p_NaviCompassIgnore](https://github.com/LawPaul) ModKit mod ("allows showing internal maps in instrument cluster when phone navigation is running") replaces that handler with one that still tells the phone it has focus but never moves the NAVI application, so the cockpit keeps its map, which is the window this mod's daemon draws into. It also stubs the CarPlay `AppState` classes for the same effect on CarPlay. Its classes do not overlap with this mod's jars, and this mod receives the phone's focus request through its own DSI listener, so the turn-by-turn side keeps working. Put both mods on the same card (`Mods/NavCompassIgnore` next to `Mods/ClusterIntegration`); the ModKit installs each. Its installer is Audi-only and its uninstaller just deletes `NaviCompass.jar`.
-
-### Handing the cockpit back to the Audi map when Android Auto ends
-
-On the e-tron the cockpit went black after Android Auto disconnected and stayed black until the next drive. Two things cause that, both visible in the unit's own `lsd.jar`:
-
-- The release JAR looks the navigation bundle's `IMapClusterService` up once, in the `AndroidAuto2Subsystem` constructor, through the terminal-mode `IServiceManager.getServiceReferences(Class)`. On the e-tron that found nothing, and the release cluster integration never calls the service when the session ends anyway (its `wakeNativeNavCluster` was dropped from the shipped class). The stock navigation code reaches the same service with an OSGi `ServiceTracker` on the class *name* (`de.audi.tghu.navi.app.cluster.MapClusterServiceProxy`), which works regardless of which bundle starts first.
-- The stock service (`de.audi.tghu.navi.app.cluster.MapClusterService`) implements `switchKombiMapToHiddenContext()` as `kombiMap.switchToHiddenContext()` + `exitMapScreen()` and `switchKombiMapToAShownContext()` as `kombiMap.startActivity(Intent.AUTO)` + `enterMapScreen()`, both guarded against repeats, so a bare "show" while the HMI believes the map is already shown does nothing.
-
-`nav/KombiMapGuard` does the job for both cars. It is Bhushan Ahire's class from the Q7 (PR #11), which hides the native map while the video renders (`suspendMapViewer` + `viewSetVisible(false)` on `DSIMapViewerControl` instance 3, `switchKombiMapToHiddenContext()`) and restores it afterwards, merged with the e-tron work: a `ServiceTracker` on the `IMapClusterService` name next to the retried service-manager lookups, the show 1.2 s after the video stops (once the mod's window is gone), `notifyViewSizeChanged(true)` after the show, and a one-off inventory of the registered map/cluster services. Everything goes through reflection inside a catch-all, so a missing class costs the hand-back, never Android Auto. What `/tmp/cluster.log` shows:
-
-- at HMI start: `KOMBI_MAP: kombi-guard 2026-10-18a started`, `KOMBI_MAP: tracking de.audi.tghu.navi.app.cluster.IMapClusterService by name (...)`, then `KOMBI_MAP: IMapClusterService registered (tracker, class=...)` or `... found (service manager)` and `KOMBI_MAP: DSIMapViewerControl(KOMBI=3) found` as the navigation comes up; one `KOMBI_MAP: coding navMapTransmissionMode=...` line (3 = virtual cockpit);
-- when the video starts: `KOMBI_MAP: AA video rendering, hiding native cockpit map (viewer=... mapCluster=...)`, followed by one `KOMBI_MAP: service: ...` line per registered OSGi service whose name mentions Map, Kombi, Cluster, Combi, Zoom or navi (with `DEVICE_INSTANCE` / `DEVICE_NAME` where set), the inventory to read if a lookup failed;
-- when it stops: `KOMBI_MAP: AA video stopped, showing native cockpit map in 1200 ms`, then `native kombi map viewer woken`, `IMapClusterService.switchKombiMapToHiddenContext() invoked`, `...switchKombiMapToAShownContext() invoked`, `...notifyViewSizeChanged(true) invoked`. If the cockpit still stays black after those lines, the hand-back reaches the HMI but the map window is not rebuilt; the next lever is the display composition itself (see the A7 notes in PR #12).
-
-The steering-wheel zoom is the same service in the other direction (`changeZoomLevel(int)` fires the HMI's `RemoteZoomView`, which drives the hidden Audi map); routing it to the phone's map is not done yet.
-
-### Changing the cockpit loading splash
-
-For about two seconds after Android Auto connects, while the H.264 decoder warms up, the cockpit shows a splash: in the release it is fifthBro's credit card (`modkit/splash/shipped_fifthbro_1280x720.png`). It is compiled into the `cluster` daemon as a zlib stream (`src/boot_canim_data.h`, the PCM's "canim" format: a 56-byte header and raw RGB pixels), and there is no QNX toolchain here to rebuild the daemon, so `modkit/splash/canim_tool.py` swaps the stream inside the shipped binary instead: a same-length overwrite at the stream's one offset, padded with zeros (the daemon's `uncompress()` stops at the stream's own end marker, so the length constant in the code stays right), verified by decompressing the patched file. Nothing else in the binary changes; re-encoding the shipped image gives a byte-identical binary.
-
-To use your own: design a 1920x1080 PNG on `modkit/splash/template_etron_1920x1080.png` (the red lines are rows 358-1079, the band the cockpit shows with the e-tron recipe `fill` / `panY=0.248`; the inner guides mark a 1280-wide area clear of the housing), save it as `modkit/splash/splash.png`, and `build_sd_package.sh` patches the daemon in the package (`SPLASH_PNG=<file>` overrides the path; without a file the daemon ships as released). The image must compress to no more than the original stream, 45,954 bytes: flat colours, text and simple shapes fit (a dark card with text is 10-45 KB), photographs and noisy gradients do not, and the tool refuses an oversize image rather than shipping a broken daemon. `canim_tool.py preview splash.png out.png` shows the band as the cockpit will. The daemon's other two pictures, the idle logo and the after-disconnect splash loaded from `/mnt/app/eso/hmi/splashscreen/splashscreen_000.canim` (absent on Audi), are left alone: the latter would hold the cluster map slot after Android Auto ends and defeat the hand-back above.
-
-Upstream's licence (CC BY-NC-SA 4.0) asks for attribution; replacing the splash is fine as long as the credit in this README stays.
-
-### Fitting the map to the e-tron's cockpit
-
-The daemon sizes its window to the cluster display it detects (1920x722 on the e-tron) and blits the decoded frame into it according to `gal_h264.mode`. The phone can only stream 16:9 frames, so the default `letter` mode pillarboxes them: 722 x 16/9 = 1283 pixels wide, centred, which is the narrow box seen on the first e-tron runs. The settings that fill the panel, all from the card without reflashing:
-
-- `gal_h264.codecRes=1080`, `gal_h264.mode="fill"`, `gal_h264.panY=0` and `GAL_CLUSTER_RES=1080` in the hook's `gal_env`, which the installer sets on every Audi (`audi default:` lines in the install log; a key in `config_overrides.txt` or a `GAL_CLUSTER_RES` line in `gal_env.txt` still wins), and the cluster entry the package build writes into `gal_cluster.so` from `modkit/template/template.txt`. The phone streams 1920x1080 (confirmed from the SPS it sends), `fill` crops the centre 722 rows (179-900) and shows them pixel for pixel across the full width, and the entry tells the phone where the cockpit's free part is. It declares no margins, so the phone lays its cluster UI out over the whole frame, and content insets top 315, bottom 360, left 680 and right 680 at density 145 keep the car marker, the turn card and the arrival line between the dials: arrow in the centre, turn card at the top, arrival line at the bottom, clear of the dials in the large map view and in the view with the two large dials. These are the values of the cluster entry in the upstream release v1181, tried on an A6 C8 with Google Maps, parked and driving. Earlier entries, for the record: the Q7 values from PR #11 (`height_margin=358`, margins top 179 / bottom 180, insets bottom 195 / left 160 / right 160, density 200) put the turn card behind the speed dial (ETA line cut in the large map view, the whole card hidden in the view with the two large dials, where only about x 616..1304 is visible; also reported on an e-tron); the same margins with insets left 500 / right 624 at density 160 (beta 3) showed the card in both views, but flush right next to the dial; 500/500 cleared the dial in the large map view only; with 624/624 Google Maps dropped the card; the v1181 values as margins instead of insets left the large view almost black. Android Auto gets the entry once per connection, so it cannot follow the cockpit view the way the CarPlay hook does. Without the 1080 / fill settings (the release's 720 / letter) the map is a band with black bars above and below and a hard right edge. Leave `zoomX`, `zoomY` and `panX` at their defaults; `zoomY` on top of `letter` is what produced the squashed look.
-- The package build also applies `modkit/patches/gal_cluster.patches.txt` to the hook: one instruction (2 bytes) so that its 30 Hz timer always acknowledges the cockpit video frames to the phone. Without it the hook only passed on the acknowledgements of the main screen's stream and both streams dropped to about 3 pictures per second, a stutter that showed in turns (A6 C8, and reported by a tester on another A6). With the patch the picture ran better on the A6 C8 while driving, and a tester on another A6 reports less stutter, not none; in a drive with the decoder log 2500 of 2500 pictures were decoded and shown, so what is left does not come from the decoder dropping pictures.
-- What did not work, for the record: `GAL_CLUSTER_INSET_TOP=358` with `panY=0.248`. The hook reads the `GAL_CLUSTER_INSET_*` variables and logs them, but sends the phone a fixed 54-byte entry with zero margins, so the phone laid its UI out for the full 1080 rows: the turn card ended up at the top of the frame (hence the pan to the bottom band) and the car marker at the bottom, under the Audi info bar. Bhushan Ahire found this on a Q7 (PR #11); it is confirmed against the v0034 source (`memcpy` of `dhu_cluster_service`, one byte patched for the resolution) and binary. `modkit/template/cluster_template_tool.py decode` on a `/tmp/aa_sdresp_*.bin` dump (`GAL_CLUSTER_SD_LOG=1`) shows what the phone was actually sent.
-- The same with `codecRes` 720 and insets of 120: the centre 481 rows of a 1280x720 frame, upscaled 1.5x. Less sharp, less bandwidth.
-- `gal_h264.mode="stretch"`: full width by distorting the frame. Only for a quick look.
-
-`gal_env.txt` lines are copied to `/mnt/app/eso/bin/apps/cluster/gal_env` (recorded in the manifest) and exported by the `gal` wrapper before `gal.real` starts; `gal_env.example.txt` ships next to the overrides example. Re-run the installer after every change (it backs up and replaces the config, and `gal` has to restart to pick up the environment). The hook's own log (`GAL_CLUSTER_LOG=1`) shows what was negotiated: `insets: top=180 ... bottom=180` and `codec_res=3(1080p)` in the `sdresp:` line; the daemon's `cluster_daemon.log` shows `display size: 1920x722 (... auto=ok ...)` and `BeginSequence: 1920x1080`.
-
-### Iterating over SSH instead of rebooting
-
-With root SSH on the unit (LawPaul's `mh2p-ssh-access` mod) the card can stay in the slot and most changes apply without the ModKit boot cycle:
-
-1. Edit `Mods/ClusterIntegration/config_overrides.txt` or `gal_env.txt` on the card from the unit (`cat > /fs/sdb0/Mods/ClusterIntegration/gal_env.txt <<'EOF' ... EOF`), or on a PC.
-2. Run `ksh /fs/sdb0/Mods/ClusterIntegration/Update/reinstall.sh`. It is `install.sh` with the same gate, backups, manifest and marker files, so the log is the same as the ModKit's.
-3. The installer stops `gal` and the daemon. Reconnect the phone: the HMI starts a new `gal`, which reads the new `gal_env` and the new config, and `/tmp/gal_preload.log` shows the `gal env:` lines it exported. The `gal` wrapper also starts the cluster daemon when it finds none running (the Persist script only starts it during a full boot), so after an HMI restart from the knob the map video comes back with the next Android Auto session; `cluster daemon: not running, started by the gal wrapper` in `gal_preload.log` says it did.
-
-A changed JAR (a new package) still needs a restart of the HMI, because it loads the jars at start. Restart the MMI by holding the on/off knob on the centre console for about 10 seconds, or lock the car and let it sleep. Do not use the unit's `shutdown` command without `-b`: on this QNX image it halts the HMI processes and leaves the operating system running, so the screens stay dark until the MMI is restarted by the knob or a power cycle (seen on an e-tron). `/tmp` is RAM, so copy the logs to the card before switching off.
-
-Emulating the head unit on a PC is not realistic: the HMI is a QNX 6.6 image for the unit's NVIDIA Tegra board (the QNX Screen compositor, the NvMedia H.264 decoder, the cluster LVDS link, the DSI middleware and the Android Auto receiver are all tied to that hardware and to the car's bus), there is no QEMU board support for it, and the pieces this mod exercises are exactly the hardware-bound ones. A full backup is worth having regardless: over SSH, `mount` lists the partitions (the app partition is `/dev/mnanda0t177.1`), and `ssh root@<unit> "dd if=/dev/mnanda0t177.1 bs=65536" > mnt_app.img` on a PC copies one (slow over the car's Wi-Fi; a USB stick in the unit, `/fs/usb0_0`, is faster but FAT32 caps a file at 4 GB, so split with `dd` `count=`/`skip=`). The mod's own changes are already backed up on the card by the installer.
-
-### CarPlay map in the cockpit (altScreen)
-
-`Mods/ClusterIntegration/enable_carplay_altscreen.txt` puts the iPhone's own instrument-cluster map into the virtual cockpit: the second CarPlay video stream ("altScreen", stream type 111) that Apple Maps and Google Maps draw for a car's cluster, with the turn card, distances and ETA laid out for it. It is not a crop of the MMI screen. Built and tested on an A6 C8 with `MH2p_ER_AUG35_P2711` (libairplay 320.17.1), wireless CarPlay with an iPhone on iOS 27, in daily use since October 2026.
-
-Ready-made SD package with step-by-step guides (English: [docs/carplay-cockpit/GUIDE-EN.md](docs/carplay-cockpit/GUIDE-EN.md), German: [docs/carplay-cockpit/ANLEITUNG.md](docs/carplay-cockpit/ANLEITUNG.md)): [releases](https://github.com/CrEaK/mh2p-cluster/releases).
-
-What it does:
-
-- `altscreen.so` (source and build script in `src/altscreen/`, GPL-3.0-or-later; protocol knowledge from luka-dev's [mib2q-carplay-rgi](https://github.com/luka-dev/mib2q-carplay-rgi) altScreen work) is preloaded into `dio_manager` instead of `dio_cluster.so`. It advertises a second display (1920x720, four view areas: large map and big gauges, each for the standard cockpit layouts and for layouts with the dial in the centre) to the iPhone, accepts stream 111 on TCP 6031, decrypts it (ChaCha20-Poly1305 with the pairing session's key on wireless, AES-CTR when the session has none) and writes the H.264 into the daemon's ring `/cluster_h264_shm`. It also passes the steering-wheel roller to the phone (`changeMapZoomLevel`) and switches the phone's view area when the cockpit changes between large map and large gauges or to another layout (`updateViewArea`). While stream 111 runs it also keeps libairplay's idle keep-alive from expiring: with no main screen or audio stream set up, libairplay ends the session when the phone sends no keep-alive for 30 s, but with stream 111 up the phone sends its keep-alives inside that stream (opcode 5), which libairplay never sees. Before this, CarPlay dropped and reconnected every 30 s while the MMI showed the radio without CarPlay audio. The hook interposes `select()` and, for exactly that 30 s wait on the keep-alive socket, waits again while stream 111 delivered data in the last 30 s (`keep-alive:` lines in `/tmp/altscreen.log`).
-- The hook checks the libairplay build it was made for when the iPhone connects and passes everything through on any other build, so CarPlay itself keeps working; on another firmware the cockpit just keeps the Audi map. `cluster/altscreen_off` on the unit (or `/tmp/altscreen_off` until the next restart) turns it off without reinstalling.
-- `altscreen_pf.sh`, started at every boot by the Persist script, copies the packet filter's rules for TCP 6030 to 6031: Audi's filter passes only a fixed port list on the hotspot interfaces. The system reloads its rules when the hotspot comes up (30-60 s after boot on the A6), right when the iPhone connects, so the script checks every 2 s for the first five minutes and every 30 s after that (`/mnt/ota/modkit/Logs/altscreen-pf.log`). A check that cannot open the port writes its reason to the log once (`pf: no 6030 rule to copy (...)`, `pf: reload failed` with pfctl's text, each with how long the check took), and the line that opens it is followed by `pf: N check(s) had failed before that`, at most 20 failure lines per boot: on an A6 C8 on 2026-11-27 the port was shut from 38 s to 47 s after boot, the iPhone connected at 37 s and did not try again, and the log held a single `Resource busy` for those nine seconds.
-- Units where the ModKit cannot set up its start at boot (trial, on-car test pending): when another patch already replaced the MMI's start program `/mnt/app/eso/bin/servicemgrmibhigh` with its own script and keeps the original under another name (seen on an A6 C8 with a "Q3Team" patch: original as `servicemgrmibhigh99`), the ModKit stops with `error: unknown patch state` in `_ModKit_Update.log`, never installs `modkit_persist.sh`, and nothing runs the Persist script, so TCP 6031 stays closed and no cockpit map arrives. The installer reports this as `modkit boot: WARN ...` and leaves those files alone. The `dio_manager` wrapper then starts `altscreen_pf.sh now` and the cluster daemon itself whenever `/mnt/ota/modkit/modkit_persist.sh` is missing, before it sets `LD_PRELOAD`, and writes what it did to `altscreen-selfstart.log` in the ModKit log folder. `altscreen_pf.sh` keeps its pid in `/tmp/altscreen_pf.pid`, so a second start leaves.
-- The installer sets `mirror.mode` to `"fill capture=h264"`: when CarPlay owns the MMI screen the Java side starts the daemon as before, and the daemon now decodes the hook's stream instead of mirroring the screen.
-- The cockpit side is the Audi JAR: `DisplayManagerMIB2High` (a stock class, decompiled with CFR and rebuilt; bytecode of the unchanged parts compared with the unit's) adds cluster contexts 80 (41, 62) and 81 (20, 41, 62), the stock map contexts with displayable 62 in place of Audi's map displayable 33, and `KombiMapGuard` switches to them only while video frames arrive (`/tmp/altscreen_video`, held by the hook). The native map keeps running on 33 and is back the moment the video stops; without frames (iPhone not connected to 6031 yet) the Audi map stays. `IMapClusterServiceWrapper` routes the roller's zoom to the hook while the video is shown, and `KombiMapGuard` polls `IViewSizeManager` for the cockpit layout (`/tmp/altscreen_view`).
-- While the video is shown, the Audi map's zoom scale in the cockpit status bar (magnifier, "400 m", scale bar) is hidden: it belongs to the hidden Audi map. The status bar is not on displayable 41 but in a subtexture the cluster places itself, so neither the display contexts nor the layer's opacity reach it; `ZoomScaleHider` finds the group in the HMI's widget tree (the label bound to model 403861) and switches its visibility, then invalidates the subframe. The traffic provider logo ("TMC", "TMC PRO", online traffic, bottom left in the cockpit map) is hidden the same way: the icon bound to model 500137, only where it sits below the cockpit's `MapControllerCombi` (the same factory method builds one for the navigation sidebar on the MMI, which is left alone). The satellite map provider logo ("Google" bottom right, shown with the Google Earth / satellite map) goes the same way: the icon on model 4000022 in the same `MapControllerCombi`. Altitude, street and compass stay.
-- The cockpit's navigation menu (MMI-drawn screen `nAV_FPK_MENU`) gets a **Smartphone Map** row (called "Carplay Map" up to beta 2) with a checkbox below "Karte", visible only while a CarPlay session sends the cockpit video or Android Auto renders its cluster map. On (default), the cockpit keeps the CarPlay map while the phone sends the video, also when the MMI shows the radio, the reverse camera or Audi menus (the phone keeps sending stream 111 then); off, it shows the Audi map. With Android Auto the same checkbox decides in `KombiMapGuard`: off, the daemon keeps decoding but the cockpit stays on the native map context (`AA video rendering, Smartphone Map off - native map stays`); confirmed on the A6 C8 on 2026-11-14. `CarPlayMapSwitch` hands the CarPlay integration DEVICE or MAINUNIT from the setting and the hook's `/tmp/altscreen_video` instead of the real MMI screen owner, which is only logged (`Carplay Map:` lines in `/tmp/cluster.log`). The row comes from a shadowed `de.audi.tghu.combinavi.hmi.Activator`: `CarPlayMapMenu` adds ChoiceModel 4000033 to the stock CombiNavi model bank and builds the menu as a copy of the stock one plus the row, falling back to the stock bank, factory or screen on any error. The setting is stored in `/mnt/ota/modkit/carplay_map.txt` (`uninstall.sh` removes it).
-- Before every start `CarPlayMapSwitch` sets the integration's mirror settings to `fill capture=h264`, zoom 1, pan 0, and logs what the config had. A `carConfig` entry whose `carClass_generation` matches the car (the Porsche entries; an Audi Q8 apparently matches one) or a `cluster_config.json` on a USB stick or SD card otherwise sends `mode=fill`, and the daemon mirrors both MMI screens instead of decoding the video. If the fields cannot be set nothing is started.
-- The Audi JAR never starts the CarPlay screen mirror: without the hook `CarPlayScreenBridge` forwards no screen ownership, so the cockpit keeps the Audi map (turn-by-turn data is unaffected).
-- `KombiMapGuard` runs at normal thread priority. At minimum priority QNX gave it no CPU for 9 to 43 s while the HMI started up, so the cockpit kept the Audi map that long after CarPlay and its video were up; at normal priority it switches within about 1.5 s. If the switch call to the display manager ever takes more than 1 s it is logged, and after 5 s one J9 javacore per boot is written.
-- The daemon next to the Audi JAR (`Update/aa_only/cluster`, built by `build_sd_package.sh` with `modkit/patches/cluster.disp62.patches.txt`) posts its window on displayable 62. This applies to Android Auto's cluster video too, which goes through the same contexts; that is confirmed on an A6 C8 and by a tester on an e-tron.
-- Day and night: when the head unit switches CarPlay between day and night mode, the hook repeats the command for the cockpit display (`night mode ... sent for the cluster display` in the logs). Without that the cockpit map kept the mode it had when the iPhone connected.
-- Cockpit layout: in the "Performance" layout of S and RS models the speedometer sits in the centre, the status bar is higher and the small map moves to the left. `KombiMapGuard` writes the cluster skin the HMI tracks to `/tmp/altscreen_skin` ("offset tube name", for example `596 1 SPORT` or `0 0 CLASSIC`) whenever it changes, and the hook, which polls the file every 250 ms, selects the matching pair of view areas (`sport_large`, `sport_small`); iOS takes the change with `updateViewArea`, without a reconnect. Right after an MMI restart the skin is often not reported yet when the iPhone connects (`cockpit skin not reported` in the session log); the hook then starts with the standard areas and switches as soon as the report is there. Confirmed on an A6 with P2873 in Performance, Classic and Dynamic (the map adjusts about a second after a layout change) and on the A6 C8 with the layout faked through the file. Open: on a car with the CBEV skin (offset 580) the small sport area would need x 70 instead of 54, which the hook applies only when the skin is already known at connection.
-- Keyframes and the ring: the iPhone sends a keyframe only when asked. The hook asks every 3 s (`keyframe_ms`), after every daemon command, when a frame was lost and when the 2 MB ring is about to wrap. In the last 512 KB of the ring a keyframe wraps it: the rest of the lap is filled with H.264 filler units and the keyframe goes to offset 0, and every new stream starts at offset 0 as well. The daemon's decoder reads the ring from offset 0 whenever it starts, so it now begins with a keyframe instead of the middle of the stream (before: a keyframe every 10 s and a plain wrap, which after about 2 MB of video left blocks on screen until the next keyframe, reported by a tester). Putting every keyframe at offset 0 was tried first and dropped: a decoder that lags reads such a keyframe only in part (blocks right after connecting on the A6; reproduced on a host with a lagging reader). On the A6 the stream runs at about 150 KB/s standing still and around 600 KB/s while the map animates, so the ring wraps every 3 to 11 s; `ring: wrapped at a keyframe` in `/tmp/altscreen.log`.
-- A few persistent lines per session in `/mnt/ota/modkit/Logs/altscreen-sessions.log`, which the ModKit copies to the card's `Logs` folder the next time the card is inserted: session start, the cockpit skin and the view areas in use, stream 111 set up, iPhone connected or not, the stream's size and H.264 level with the hook build, video running, one line per minute for ten minutes and then every ten (pictures, keyframes, data, how the ring wrapped), pauses of a second or more in the video, layout changes, and at the end frame counts, keyframes, data rate and ring wraps. `/tmp/altscreen.log` has the details until the next restart.
-
-Optional tuning in `/mnt/app/eso/bin/apps/cluster/altscreen.conf` (read when the iPhone connects): `phys=384,144` (physical size in mm the phone is told; larger means a smaller UI), `large=500,155,940,410` and `small=624,158,672,400` (safe areas x,y,w,h in stream pixels for the large map and the view with the big gauges), `sport_large=500,155,940,380` and `sport_small=54,155,480,370` (the same two for layouts with the dial in the centre), `zoom_invert=1` (roller direction), `zoom_restore=1`, `zoom_per_view=1` and `zoom_max=10` (see below), `speedlimit=0` (the hook asks the iPhone for its speed limit sign on the cockpit map, `showSpeedLimit=yes` in the Maps cluster URL, unless this turns it off; iOS parses the parameter according to luka-dev's analysis of iOS 26.6 and 27, but the A6 C8 test car has not shown a sign yet, so whether and where Maps draws one is open), `keyframe_ms=3000` (how often the hook asks the iPhone for a keyframe, 1000 to 60000). The defaults are the A6 C8 values. Without a shell on the unit the same lines go into `Mods/ClusterIntegration/altscreen_conf.txt` on the card (template: `altscreen_conf.example.txt`): the installer copies the valid ones to `altscreen.conf` (keys it knows, numbers only), a file without any setting removes `altscreen.conf` again, and without the file an `altscreen.conf` made by hand stays. The first use was the "Performance" cockpit layout of S and RS models, where the status bar covered the arrival line of Apple Maps on an A6 with P2873; the `sport_` defaults come from that car.
-
-The map zoom is kept across restarts. The iPhone owns the zoom level and only takes relative steps, it never reports the level back, and every new session starts at the app's default. So the hook counts the net roller steps it sent, stores the count in `/mnt/ota/modkit/altscreen_zoom.txt` 3 s after the last step, and sends the same steps again once the next session's video runs: from 6 s after the first frames, one step every 0.6 s like a roller turned by hand (`zoom: ... restored` in `altscreen-sessions.log`; a burst 50 ms apart 2 s after the start, the first version, left the map more zoomed in than saved). The count stops at ±`zoom_max`, so turning the roller past the app's own limit does not drift it far; it can still be off by the steps the app ignored at its limit. Each cockpit view keeps its own count (large map, big gauges; the file holds both as `<large> <small>`, a single number from the first version applies to both): the roller changes the count of the view on screen, and after a view change the hook walks the phone's zoom to the other view's count at the same pace. The Performance layout's two view areas use the same two counts. `zoom_per_view=0` shares one count. `zoom_step_ms=600` is the time between two steps of that walk (50 to 2000); the replay at the start of a session keeps 0.6 s. iOS has no command for an absolute zoom level, an app only gets "zoom in" and "zoom out", so the pace is the only lever. `zoom_restore=0` turns all of this off; `uninstall.sh` removes the file.
-
-Requirements: CarPlay working on the unit (wireless or wired; wired is confirmed in cars on P2711 and P2873), and the Audi JAR (the marker is ignored together with `enable_carplay.txt`). `enable_carplay_hook.txt` is not needed; the altScreen hook replaces the turn-by-turn hook, which draws nothing on a cockpit coded for the map anyway (see below). `NaviCompass.jar` (LawPaul's MH2p_NavCompassIgnore) keeps the Audi map available underneath.
-
-Not covered: other libairplay builds (the hook stays passive; supporting one means finding the same few functions in its disassembly, listed at the top of `altscreen.c`), and an arrow in the tacho: Apple Maps and Google Maps already show the turn card inside the map.
-
-### CarPlay on Audi
-
-**CarPlay in the cockpit without shadowing Audi's CarPlay manager (experimental, A6 C8 P2711):** `Mods/ClusterIntegration/enable_carplay_hook.txt` installs the `dio_manager` hook but keeps the Audi JAR. That JAR now carries `CarPlayClusterIntegration`, `CarPlayManeuverMapper` and `CarPlaySideStreets`, and the rebuilt `AndroidAuto2Subsystem` starts the integration itself (the same service lookups and `registerDSIListener` the mod's `CarPlayDSIManager.init()` makes on Porsche), so Audi's own `CarPlayDSIManager` stays in charge of CarPlay and the class-mismatch problem below does not arise. Found on an A6 C8 `MH2p_ER_AUG35_P2711`:
-
-- The hook works there: the iPhone accepts the rewritten Identify and streams route guidance (0x5201/0x5202), and the integration turns it into BAP maneuvers.
-- The cockpit does not draw them. A DSITracer capture (`traceConfig.properties` with the telnet appender and `org.dsi.ifc.bap.DSIBAP=full`) shows that Audi's own route guidance never sends the maneuver descriptor, distance-to-maneuver or active-RG-type functions (LSG 50, fct 23/18/39) on a cockpit coded for the map (`navMapTransmissionMode=3`): the arrows are part of the map video. Calls to those functions from the mod do not reach the bus either. BAP turn-by-turn is therefore not a way to CarPlay arrows on these cars.
-- The screen mirror worked, but is no longer started by the Audi JAR (2026-11-09; it shows both MMI screens, which is no use in the cockpit); the notes are kept for reference. Two things were missing on Audi and are added by `nav/CarPlayScreenBridge`: a DSI listener only gets `updateMode` after `setNotification(ATTR_MODE)` on the `DSICarplay` service (registering it is not enough, it then only sees `responseModeChange` with owner 0), and Audi numbers the resources `RESOURCE_MAIN_AUDIO = 1`, `RESOURCE_MAIN_SCREEN = 2` where the integration tests for screen 1. `KombiMapGuard` also watches the CarPlay integration's `clusterState`, so the native cockpit map is hidden while the mirror renders and handed back afterwards.
-- The mirror captures the surface of both MMI screens (2820x720: upper 1540 + lower 1280) into 1920x720. `mirror.zoomX=1.831` and `mirror.panX=-0.416` cut out the upper screen. With the optional `modkit/patches/cluster.box.patches.txt` (build with `CLUSTER_EXTRA_PATCHES=...`) `mirror.mode="native"` draws it as a centred box in the right aspect ratio instead of stretching it over the cockpit width; the file lists the box sizes (patch verified by disassembly, car test pending).
-- `NaviCompass.jar` from LawPaul's MH2p_NavCompassIgnore keeps the Audi map in the cockpit while the phone navigates instead of switching to the compass.
-
-Turn-by-turn from CarPlay needs the `dio_manager` hook, which is opt-in on Audi (`enable_carplay.txt`). Before enabling it, run a diagnostic-mode pass with it enabled: the wrapper exports `DIO_CLUSTER_LOG=1`, and the shipped hook writes `dio_cluster.log` to the SD card root with `IDENTIFY orig` / `IDENTIFY new` dumps and the phone's `ACCEPTED` / `REJECTED` answer. A rejected Identify on every connection means the Audi head unit already advertises route guidance or the layout differs; disable the hook by deleting `enable_carplay.txt` and running the installer again (it puts the stock `dio_manager` back) rather than leaving CarPlay broken. `uninstall.txt` removes the whole mod instead. The hook also only triggers on wireless CarPlay sessions hosted by `dio_manager` that stream location to the phone; wired sessions live in another process and never reach it. On an e-tron P2873 the Java side is already known not to fit (the full JAR's CarPlay classes do not link against that image, see the verification section), so until a JAR built against the Audi CarPlay classes exists this is Porsche-only in practice.
-
-### Turn arrows on the head-up display (trial)
-
-Not working yet: on the first car with a head-up display (an Audi on P2711, wireless CarPlay, 2026-11-26) the handler took 73 element pairs without an error and the display kept showing only the current street. That build fed the element pair alone; the current one also feeds the text path described below and has not been on a car. `Mods/ClusterIntegration/hud_arrows.txt` turns it on (marker `cluster/hud_feed`, read when the MMI starts); without the file the JAR behaves as before.
-
-On a cockpit coded for the map, BAP turn-by-turn does not reach the cluster (see [CarPlay on Audi](#carplay-on-audi)). The head-up display is fed from another place in Audi's navigation: `NaviClusterCommonExtension.updateKOMOFollowInfo()` hands a pair of `org.dsi.ifc.komoview.RouteInfoElement` to `MOSTHUDKDKHandler.setRouteInfo()`, which passes it to the `DSIKOMOView` service (instance HUD) that draws the manoeuvre. The handler exists only when the car is coded for it (`UtilFrameworkAccess.hasMOSTHUD`, adaptation `CrossRoadDetailMapTransmissionMode`). Read in the stock classes of P2711 and P2873.
-
-`nav/HudTurnFeed` sits between the phone integrations and `CombiBAPServiceNavi` as a `java.lang.reflect.Proxy`. It forwards every call unchanged and turns `updateRGStatus`, `updateManeuverDescriptor`, `updateDistanceToNextManeuver` and `updateTurnToInfo` into that element pair: the manoeuvre element takes the BAP main element and direction as they are (Audi's own element numbering is the BAP one, `TURN` = 13), the distance the BAP value with the unit converted like `UnitConverter.convertBapDistanceUnitToKomoViewUnit`. It reaches the handler through the navigation's `CombiBAPListener` (field `clusterService`, then `getMOSTHUDKDKHandler()`), which `CombiBAPServiceNaviListenerWrapper` keeps when the navigation registers it. A `2` as the first character of `hud_arrows.txt` also sends the side streets (element 128).
-
-The head-up display has a second path for text, which the stock code feeds next to the pair: a `KOMOCaller` of its own (`getKomoCallerHUD()`, `DSIKOMONavInfo` instance HUD) gets `setDistanceToNextManeuver(value, unit, valid)` (BAP tenths, unit through `convertBAP2KOMONavDistanceUnit`, so metres are 1 here and 0 in the pair), `setTurnToStreet(street, "")` and `setCurrentStreet`. `HudTurnFeed` sends distance and street there as well. The first element of the pair is a copy of the navigation's own `followInfoRIE` with `distanceToManeuver` set, as `updateNextManeuver()` does, and the manoeuvre element carries the fields `MixedListItemTurn.toRouteInfoElement()` sets (`streetIconID` and `exitIconId` -1, no `trafficInfo`). When the phone's guidance ends it calls `updateKOMOFollowInfo()`, so the navigation puts its own pair back, and resets the text path to -1 / 255 / false. A watcher thread looks at the handler and the caller every two seconds: while the phone guides and Audi's navigation does not (`rgActive` of the extension), it sends ours again when the navigation replaced it; otherwise it writes the navigation's own pair and text to the log, which makes a drive with Audi's guidance the reference for what a working pair looks like.
-
-The turn data comes from Android Auto, or from CarPlay with the turn-by-turn hook (`enable_carplay_hook.txt`). With the CarPlay cockpit map (`enable_carplay_altscreen.txt`) the `dio_manager` wrapper loads only the map hook; `Mods/ClusterIntegration/carplay_turns.txt` (marker `cluster/carplay_turns`, trial, untested on a car) makes it preload `dio_cluster.so` as well (`LD_PRELOAD=altscreen.so:dio_cluster.so`). The two take over different functions, four iAP2 ones (`CIAP2ControlSession::deployMessage`, `CIAP2ControlSessionModuleIdent::identificationInformation` and `::process`, `CIAP2Link::sendToSession`) against `AirPlayCopyServerInfo`, `AirPlayReceiverSessionSetup`, `...TearDown`, `...SetNightMode` and `select`, and both pass on with `dlsym(RTLD_NEXT)`. Wireless CarPlay only, as for the turn-by-turn hook alone.
-
-The cockpit's own box (trial, marker `cluster/komo_feed`, set by hand, untested on a car): the picture the cockpit shows at the right while Audi's navigation guides is drawn by the same renderer (`navStartup`, `ce_dev::KomoViewService`, instance cluster). Its "follow" scene is the template `assets/olympia/olymp1/294x320/follow/follow.svg`, filled from the pair: destination flag, arrival and remaining distance from the first element, arrow, prefix and distance from the second. For the cockpit the stock code sends the pair through `KOMOService` and `KOMOCaller` to `DSIKOMOView.setRouteInfo()`. With the marker `HudTurnFeed` puts a proxy into `KOMOCaller.komoView` that forwards every call and, while the phone guides, replaces the second element of the navigation's pair with the phone's manoeuvre; a change at the phone is sent at once with the navigation's last first element, and the navigation's pair goes back when the phone stops or the marker is removed. The proxy runs inside `KOMOCaller`'s monitor and takes no lock of the class. The scene is switched on by Audi's own guidance (`on_guidance_started`, `show_scene` in the renderer), so the box shows the phone's turn only while an Audi route runs as well; the junction picture near a manoeuvre stays Audi's.
-
-Confirmed on an A6 C8 (P2711, 2026-11-26) with an Audi route and a CarPlay route running together: the box showed CarPlay's arrow and distance ("in 200 m", "in 3,3 km", the number formatted by the renderer from `distance`, `distanceFormat` and `decimalMark`), arrival and remaining distance stayed Audi's, and the navigation's pair came back when the CarPlay route ended.
-
-What switches the box on (read in the stock classes and in `navStartup`): the renderer reports "visible" after drawing a scene other than its empty one (`on_rendered`, `set_frame_visible`), `ClusterKDKHandlerFPK.refreshState()` combines that (`updateKOMOViewVisible`) with the guidance state (`updateRgActive`), standby and ignition, and then publishes hint 4 (`BITFIELD_KDK_VISIBLE`) in the HMI models 168 and 4652. A second trial marker, `cluster/komo_show` (untested on a car), sets both inputs of that handler by hand while the phone guides and Audi's navigation does not, to see whether the cockpit then makes room for the box; the renderer's picture stays its empty one, because its scenes follow Audi's own guidance.
-
-The content of the box without an Audi route (trial, `src/navhook/`, P2711 only; confirmed on an A6 C8 on 2026-11-27 with the files put in place by hand, and on a second P2711 car with a head-up display the same day through the installer path below). `komo_hook.c` is loaded into `navStartup` as a dependency of one of the navigation's own libraries: `add_needed.py` adds one `DT_NEEDED` entry, `dog.so`, to `/mnt/app/navigation/libwatchdog.so` (the name is the tail of the library's soname, so it is in the dynamic string table already; the library has spare slots in its dynamic section and an RPATH of `$ORIGIN`; 73 bytes change, the size stays), and the hook library is installed next to it under that name. A first attempt started `navStartup` through a wrapper script as `navStartup.real` with `LD_PRELOAD` extended: on an A6 C8, 2026-11-26, the navigation did not come up that way, with or without the library (four starts in three seconds, no core file), so `navStartup` is no longer renamed. The vtable of `ce_dev::KomoViewService` is exported and writable (no `GNU_RELRO`); the library points slot 22 (`setRouteInfo`) and slot 43 (its thunk in the `DSIKOMOView` base, the one the DSI stub calls) at itself, runs the original and then reads `/tmp/komo_follow`, which `HudTurnFeed` keeps: `1` shows the follow scene (`show_scene`, slot 26, with scene type 1 and the service's own `ManeuverWithDistance` at offset 196, which the follow scene ignores), `0` leaves the scenes to Audi's guidance, no file goes back to the empty scene (`on_guidance_stopped`, slot 14). Without the switch `cluster/komo_hook` it writes one line to `/tmp/komo_hook.log` and returns, which is how the loading alone is tested first. With the switch it hooks only when the vtable's link address, the distances of five slots and the code at two places match the P2711 build, and behind a start check: `/mnt/ota/modkit/komo_hook_try` is created before hooking and removed after 60 seconds; found at load, that start stays unhooked, and after three such starts it stays out until `komo_hook_fails` is deleted. Scene types: 0 empty, 1 follow, 2 prepare, 3 action, 4 u-turn, 5 destination, 6 compass, 7 extended follow.
-
-The freeze of the first version (`navhook2`) and what `navhook3` does about it; `navhook3` has not run on a car yet. Seen on 2026-11-27: on the A6 the box stopped following about a second after a second route had started (first Google Maps, then Apple Maps) until that route was ended and started again, and on the car with the head-up display the arrow there stayed at the phone's first data (straight on, no distance) for the whole route while the cockpit box followed. Read in the binary: the render engine (`GuidanceViewRenderEngine`, the service's member at offset 164) draws on request and drops every request while it is frozen (`set_freeze`, flag at offset 308); `KomoViewService::on_rendered` freezes it whenever a frame of the empty scene is done; `switch_scene`, in which `show_scene` ends, freezes, sets the scene and unfreezes by itself. `navhook2` called `on_guidance_started` (unfreeze) right before `show_scene`. That wakes the render thread while the empty scene is still the current one, and its "empty scene drawn" can arrive after `switch_scene` has unfrozen: the fade to the follow scene still runs, because that redraw was queued already, and then the engine sleeps with the frame reported visible. `navhook3` calls `show_scene` alone and, while the scene is its own, reads the engine's flag in every `setRouteInfo` and calls `on_guidance_started` when the engine sleeps (when the engine is not of the class the offset was read from, it calls it every time); the log names the flag at each start and each wake-up. Because the hook only acts inside `setRouteInfo`, `HudTurnFeed` sends the current pair every four seconds while the phone guides and Audi's navigation does not. The head-up display's view is the same service with style 5 (`hudSetting` 2: `210x136/follow/follow_hud.svg`, arrow and distance); style 6 (`hudSetting` 1) has no follow scene.
-
-The flag at the destination (trial, `navhook5` and `komo9`, switch `cluster/komo_dest`; seen on an A6 on 2026-11-28, forced while parked and by the real rule on a drive). Audi's own guidance changes from the arrow to a picture with a flag near the destination; in the renderer that is scene type 5, the special manoeuvre scene with a fixed image. `show_scene_internal(5)` takes the manoeuvre element from the stored pair (3 = destination, which is what CarPlay sends for the arrival) and lets that scene pick its picture. Read in both builds: the scene uses the `ManeuverWithDistance` only to copy it and to ask whether it is valid, and the service's questions to it (side of the road, kind of manoeuvre) return an error for an empty one and leave their default, so the picture is "destination on the road". With the switch, `HudTurnFeed` writes `5` in place of `1` into `/tmp/komo_follow` once the phone's next manoeuvre is the arrival and 200 m away or nearer (a distance the phone gave after the manoeuvre changed), and keeps it until the manoeuvre changes or the guidance ends; the hook then calls `show_scene` with 5. An older hook reads `5` as "hands off", so the switch belongs to `navhook5` only. One wish per view (`navhook6`, `komo10`, not seen on a car yet): the hook tells the head-up display's view from the cockpit's by the style variant the service keeps at offset 176 (5 or 6; the cockpit's handler asks for 1 to 4, read in both builds) and reads two bytes from `/tmp/komo_follow`, the cockpit's and the head-up display's (`01` is the arrow on the head-up display without the box, `10` the box alone; one byte is for both, as before). `HudTurnFeed` sets the cockpit's byte with `komo_show` and the head-up display's with `hud_feed` and `komo_hook`. In the installer `hud_arrows.txt` alone now installs the hook and `komo_hook` without the two box switches (`hud scene: ON (..., without the box in the cockpit)`); `nav_box.txt` is as before. The cockpit's tab (`komo12`, trial, switch `cluster/komo_tab`, not seen on a car yet): on an A6 on 2026-11-28 the cockpit kept the box in every tab, as with Audi's own guidance, and a change of the tab away from the map and back reached the navigation as `IMapClusterService.switchKombiMapToHiddenContext()` / `...ToAShownContext()` (the BAP indication `setMapVisibility` did not come). With the switch `HudTurnFeed` takes the handler's "guidance runs" back while the cockpit shows the map and that map is the phone's (`/tmp/altscreen_video`), so the box does not repeat what the phone's map already shows, and sets it again in the other tabs; the scene stays up meanwhile. The same test settled the phone's own drawings on the map: the turn card goes with the path `/map`, the arrival line with `showETA` (`maneuverLayout=no` on the root path does nothing); `altscreen.conf` now has `turncard=0/1` and `eta=0/1` for that. The destination scene did not come up in that test because a parked phone's next manoeuvre is "start on ...", never the arrival; a `komo_dest` that begins with `t` forces the scene for a look at it. An arrival with 0 s and at most 1000 m to go is "now" (the box said 0:00). Confirmed on that A6 the same day with `komo12`: the box follows the tab, the forced destination scene shows the flag picture in the box, `turncard=0` and `eta=0` hold after a reconnect, and a nearly finished route shows the time of day. One thing was wrong: with CarPlay switched off in the MMI while it guided, the box stayed until CarPlay was connected again. The turn hook (`dio_cluster.so`) writes its state only when the phone sends something, and nothing on Audi calls `onCarplayTerminated()`. So `altscreen.so` (`ui2`) keeps `/tmp/altscreen_session` from a session's control SETUP to its full TEARDOWN, and `HudTurnFeed` (`komo13`) takes the box and the head-up arrow back when that file goes while CarPlay guides (with an older map hook: when the phone's cockpit video ends), and goes on when the phone speaks again; confirmed on the A6 at noon the same day (`the phone is gone ...` at 73 s, back at 75 s). On a drive the real rule for the flag showed too: CarPlay named the arrival 80 m before the destination, the next distance (70 m) switched to the destination scene, five seconds before the route ended. The distance bar of Audi's own guidance cannot be had this way: the follow scene has none (its distance function is the base class's empty one), and for the scenes that draw one it comes from the map-based views or is switched off in the configuration (`special_maneuver_mode.bargraph_enabled`).
-
-Installing it from the card: `Mods/ClusterIntegration/nav_box.txt` (Audi, software P2711 or P2873, and only when `/mnt/app/navigation/navStartup` has the size of one of the two builds the hook knows, 47516812 bytes (P2711, `MIB2P_MAIN_19_39_5`) or 47923536 bytes (P2873, `MIB2P_MAIN_21_26_3`); anything else is reported as `nav box: skipped` and nothing changes). P2873 was added on 2026-11-27 from a dump of the navigation folder (`navhook4`): the same functions sit in the same vtable slots with the same object offsets, only the addresses differ, `libwatchdog.so` takes the dependency the same way, and every stock class the Audi JAR shadows or `HudTurnFeed` reaches into is byte-identical in both firmwares' `lsd.jar`. Nobody has run it on P2873 yet. A navigation program the hook does not know leaves one line with the slot distances it found in `komo_hook.log`, which is what a port to a third firmware starts from. `Update/navhook/navhook.sh`, sourced by `install.sh` and `uninstall.sh`, copies `dog.so` next to the library first and then lets the helper `navhook/addneeded` (`src/navhook/addneeded.c`, the same as `add_needed.py`, built for the unit) add the dependency to the unit's own `libwatchdog.so`, so no copy of Audi's file is shipped. Before the changed file replaces the library it is checked on the unit: the dependency is there, the size is the same, and taking it out again gives the unit's file back byte for byte (`addneeded same`, the unit has no `cmp`). The original is kept as `libwatchdog.so.orig` next to it and as `Update/Backup/libwatchdog.so.original` on the card. The installer then sets the switches `komo_feed`, `komo_show` and `komo_hook`. Without `nav_box.txt`, and in `uninstall.sh`, the dependency comes out first and `dog.so` goes after it; where neither the helper nor a kept copy can restore the library, `dog.so` stays (a library that names it cannot load without it) and does nothing without its switch. `HudTurnFeed` copies the hook's lines from `/tmp/komo_hook.log` into `hud-feed.log` as `navigation hook: ...`, so they reach the card. Two more files set the remaining switches (2026-11-28): `nav_box_tabs.txt` (with `nav_box.txt`) sets `komo_tab`, the box makes way while the cockpit shows the phone's map and is there in the other tabs; `nav_flag.txt` (with `nav_box.txt` or `hud_arrows.txt`, so with the hook) sets `komo_dest`, the flag near the destination. A switch that is already there keeps its content (`test` in `komo_dest` forces the flag), a file that is missing on the card takes its switch away, and a file without what it needs is reported as ignored. With Android Auto `komo_tab` does not take the box away yet: the feed knows the phone's map by CarPlay's `/tmp/altscreen_video` only.
-
-`hud-feed.log` in the ModKit log folder (copied to `Logs/` on the card by the next ModKit run) has one line per manoeuvre and says what it found: `HUD handler found`, the handler's state (`view service`, `hudSetting`, `gfxAvailable`, `komoViewEnabled`, data rate) or `this car has no head-up display handler in the navigation`. Each `push` line ends with what went to the text path; `navigation's pair` and `navigation's text` lines are Audi's own data (every field that is set), `the navigation replaced our pair` counts the overwrites.
-
-### Known unknowns
-
-- Whether other Audi firmware builds construct `AndroidAuto2Subsystem` the way the mod's copy expects. On P2873 the constructor and all 15 inner classes match the unit's own `lsd.jar` (see the verification section above); other builds are unverified, and a mismatch raises a linkage error that nothing catches, leaving Android Auto dead until the JAR is removed (rollback). The mod's classes also reference about 140 framework classes outside the packages compared so far (`de.audi.app.terminalmode.*`, `de.audi.atip.*`, `de.audi.mib.system.*`, `de.audi.tghu.navi.app.cluster.IMapClusterService`, `org.dsi.ifc.*`); those are shared VAG framework code and expected to match, but have not been checked member by member.
-- Whether the Audi build of `gal` / `libautoreceiver.so` lays out `MessageRouter` and `shared_ptr<IoBuffer>` the way the Porsche one does (the installer's symbol check covers names, not layouts). A layout mismatch can crash `gal` and take Android Auto down until rollback; missing symbols only leave the cluster blank.
-- Whether service ids 14 and 21, which the hook adds to the phone's service discovery, are unused in the Audi receiver's own list. A clash makes the phone reject the session (`gal` restarts in a loop). The diagnostic first boot with `GAL_CLUSTER_SD_LOG=1` dumps the stock list as `/tmp/aa_sdresp_*.bin` for checking.
-- Whether the Audi cluster video link is displayable `33` and what resolution it has.
-- Which Audi firmware versions carry the Android Auto receiver this hook was built against. `P2873` is the closest match to the Porsche builds; the 27xx e-tron builds are accepted by the gate but unverified.
-- What LawPaul's e-tron "extra steps" for Android Auto are, and whether they change anything this mod relies on.
-- The `carClass`/`generation` values for the e-tron (read them from the log and please report them back).
-- The shipped `cluster`, `gal_cluster.so` and most JAR classes in `builds/` are newer than the sources in `src/` and `lsd/` (extra log lines, the `carConfig` schema, config reading in the hook, zoom fields in `AndroidAutoClusterIntegration`). A rebuild from this repository would regress them, so the Audi port reuses the release binaries and classes unchanged, except `AndroidAuto2Subsystem` (verified equal to its source and rebuilt with the hand-back wiring) and the classes this fork adds.
-
-### Backups and rollback
-
-The installer never overwrites a file without first copying it to `Mods/ClusterIntegration/Update/Backup/` on the SD card and verifying the copy: size always, content too when the unit has `cmp`, `diff`, `sum`, `cksum`, `md5sum` or `od`, and otherwise byte, line and word counts from `wc` (the e-tron's case: the log says `file compare: wc` and `backup verified: by size, line and word counts`; with no `wc` either it says `by size only`). A copy that fails that check is discarded and the file is not touched. The same comparison decides whether a file on the unit is already current: with only the `wc` counts available, the unit's copy must also carry the same modification time as the card file (every copy is made with `cp -p`), so an edited or rebuilt file on the card is always installed even when its size and counts happen to match. What ends up where:
-
-| Original | Kept on the head unit as | Copy on the SD card |
-|---|---|---|
-| `/mnt/app/eso/bin/apps/gal` | `gal.real` (the wrapper execs it) | `Backup/gal.real` and `Backup/gal.original.<timestamp>` |
-| `/mnt/app/eso/bin/apps/dio_manager` | `dio_manager.real` | `Backup/dio_manager.real` and `Backup/dio_manager.original.<timestamp>` |
-| an older `ClusterIntegration_*.jar` or cluster file being replaced | removed | `Backup/<name>.backup.<timestamp>` |
-
-Everything else the mod installs (the JAR, the Audi stand-in jar, `cluster`, the two `.so` files, `cluster_config.json`, the `diag_mode` marker and the `gal_env` file when present) is new on a stock unit and is listed as `add` in `Backup/manifest.txt`; rollback deletes it. The manifest has one line per action (`add`, `replace`, `swap`, `remove`, `restore`) with the backup path, appended on every run.
-
-To roll back:
-
-- **With the ModKit:** put an empty `uninstall.txt` in `Mods/ClusterIntegration/` on the SD card and boot with it inserted. `uninstall.sh` restores `gal` and `dio_manager` from their `.real` originals (falling back to `Backup/*.real` on the card if `.real` is missing), removes the added files (backing each one up as `*.removed.<timestamp>`), and records what it did in the manifest.
-- **Over SSH:** `ksh /fs/sda0/Mods/ClusterIntegration/Update/rollback.sh` does the same without a reboot cycle (the card may be on `/fs/sdb0` or `/fs/usb0_0` on your unit).
-- **Boot loop or dead Android Auto:** the ModKit runs a `failsafe.sh` from the root of the SD card early in every boot. A ready-made one ships as `Mods/ClusterIntegration/failsafe.sh` (inert there); copy it to the card's root, boot once with the card in, then delete it from the root again or it rolls back on every boot. Output goes to `Logs/ClusterIntegration-failsafe.log`.
-
-Keep the SD card: it is the only place the timestamped history lives. A factory firmware update rewrites `/mnt/app` and removes the mod along with the `.real` files anyway.
-
----
-
-## Configuration
-
-The config file `androidauto_cluster_config.json` is embedded in the JAR. To override without reflashing, place the file on a USB stick or SD card — the app checks these paths first:
-
-```
-/fs/usb0_0/androidauto_cluster_config.json
-/fs/usb1_0/androidauto_cluster_config.json
-/fs/sda0/androidauto_cluster_config.json
-/fs/sdb0/androidauto_cluster_config.json
-```
-
-### Logging
-
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `enableFileLogging` | bool | `true` | Master switch for all file logging. |
-| `enableFileHashing` | bool | `false` | Write a second log with road names/music hashed for privacy. Requires `enableFileLogging`. |
-| `enableExternalLogging` | bool | `false` | Write logs to USB/SD if present; falls back to `logFilePath`. |
-| `logFilePath` | string | `/tmp/androidauto_cluster.log` | Plain log file path. |
-| `hashedLogFilePath` | string | `/tmp/androidauto_cluster_hashed.log` | Hashed log file path. |
-| `logFileSize` | int (MB) | `50` | Max file size before deletion and restart. Range: 1–100. |
-
-### Features
-
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `enableRoundaboutLatching` | bool | `true` | Cache and hold roundabout exit direction across ENTER→CONTINUE→EXIT events to prevent arrow flickering. |
-| `enableHeartbeat` | bool | `true` | Periodically resend last maneuver+distance to prevent native nav from overwriting AA data. |
-| `heartbeatInterval` | int (ms) | `2000` | Heartbeat period. Range: 100–10000. |
-| `maneuverStateMask` | int | `0` | Bitmask for `updateManeuverState` calls. `0` = disabled. bit0=state1 FOLLOW (>500m), bit1=state2 PREPARE (200–500m), bit2=state3 DISTANCE (50–200m), bit3=state4 CALL_FOR_ACTION (<50m). Falls back to nearest lower enabled state. Example: `15` (0b1111) = all states. |
-
-### Units and Display
-
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `forceImperial` | bool | `false` | Always use miles/yards, ignoring car settings. For testing on metric testbenches. |
-| `forceRHD` | bool | `false` | Always treat vehicle as right-hand drive, overriding all detection. |
-| `metricUnitThreshold` | int (m) | `100` | Below this, display switches from km to m. Range: 50–5000. |
-| `imperialUnitThreshold` | int (m) | `161` | Below this (~0.1 mi), display switches from miles to yards. Range: 50–5000. |
-| `destinationDisplayDuration` | int (ms) | `5000` | How long to hold the arrival maneuver on screen before clearing. Range: 0–10000. |
-
-### Bargraph
-
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `bargraphMode` | string | `"auto"` | `"auto"` — detect car variant at runtime (Cayenne E3/911 992/Panamera G2 → `"always"`, Macan → `"distance"`). `"always"` — send both text and bargraph. `"distance"` — text only. `"dynamic"` — text when far, bargraph only within `dynamicBargraphDistance`. Explicit JSON values override auto-detection. |
-| `dynamicBargraphDistance` | int (m) | `100` | In `"dynamic"` mode: distance below which bargraph replaces text. Range: 10–500. |
-| `dynamicBargraphPercent` | int (%) | `50` | In `"dynamic"` mode: for short maneuvers (<2x threshold), switch point as % of initial distance. Range: 10–90. |
-
-### Dynamic Thresholds
-
-Controls how aggressively distance updates are sent per proximity zone. Each zone has a **boundary** (upper edge in metres), **distance** threshold (minimum change to trigger a send), and **rateLimit** (minimum ms between sends). `now` has no boundary — catch-all below `veryClose.boundary`.
-
-| Zone | Default boundary | Default distance | Default rateLimit |
-|---|---|---|---|
-| `veryFar` | 5000 m | 100 m | 2000 ms |
-| `far` | 1000 m | 50 m | 500 ms |
-| `approaching` | 500 m | 25 m | 250 ms |
-| `near` | 200 m | 15 m | 200 ms |
-| `close` | 100 m | 15 m | 150 ms |
-| `veryClose` | 50 m | 10 m | 120 ms |
-| `now` | — | 5 m | 100 ms |
-
-```json
-"dynamicThresholds": {
-  "veryFar":    { "boundary": 5000, "distance": 100, "rateLimit": 2000 },
-  "far":        { "boundary": 1000, "distance": 50,  "rateLimit": 500  },
-  "approaching":{ "boundary": 500,  "distance": 25,  "rateLimit": 250  },
-  "near":       { "boundary": 200,  "distance": 15,  "rateLimit": 200  },
-  "close":      { "boundary": 100,  "distance": 15,  "rateLimit": 150  },
-  "veryClose":  { "boundary": 50,   "distance": 10,  "rateLimit": 120  },
-  "now":        {                    "distance": 5,   "rateLimit": 100  }
-}
-```
-
-### Countries
-
-List of country overrides for when locale cannot be detected from platform services. Countries not listed default to LHD metric. `forceImperial` and `forceRHD` override this table entirely.
-
-```json
-{ "code": "GB", "name": "United Kingdom", "rhd": true,  "imperial": true  }
-{ "code": "US", "name": "United States",  "rhd": false, "imperial": true  }
-{ "code": "DE", "name": "Germany",        "rhd": false, "imperial": false }
-```
-
-| Field | Type | Description |
-|---|---|---|
-| `code` | string | ISO 3166-1 alpha-2 country code |
-| `name` | string | Human-readable name (informational only) |
-| `rhd` | bool | `true` if vehicles drive on the left (right-hand drive countries) |
-| `imperial` | bool | `true` if distances should be shown in miles/yards |
----
-
-## Contributing
-			
-This project is the result of extensive reverse-engineering and testing on mh2p. Contributions welcome!
-
-**Troubleshooting / bug reports**
-- Format a FAT32 SD card
-- Put SD in PCM before turning the ignition on
-- Drive → afterwards when you turn the ignition off → pull SD card → look in the log for event that was wrong → match that event to the same one in the hashed log (time stamps can be useful)
-- Share the hashed logs + expected vs actual cluster behaviour
-
-**Known limitations**
-- RHD/LHD and metric/imperial still requires testing
-- Roundabouts limited (Waze lacks exit angles so they can be wrong)
-- Data granularity and slow update rate limit accuracy
-- Some glitches are inherent to Android Auto.
-
----
-
-## Changelog
-
-### v1_main — Beta candidate
-Testing compatibility across Porsche Cayenne, Macan, Panamera and 911.
-
----
-
-## Credits
-- **LukaDev** — Managing screens in VW/MIB2 and CarPlay RGHI and GAL hacking: https://github.com/luka-dev/mib2q-carplay-rgi/
-- **One1Blt** — Android Auto/VNC to MIB2 rendering: https://github.com/OneB1t/VcMOSTRenderMqb
-- **adi961** — Turn-by-turn to VC integration: https://github.com/adi961/mib2-android-auto-vc
-- **LawPaul** — MH2P Modkit: https://lawpaul.github.io/MH2p_SD_ModKit_Site/
-- **litdreams10** — General platform knowledge, Android Auto testing
-- **Bhushan Ahire (bhushangahire)** — Audi Q7 P2711 profile: `KombiMapGuard`, the decoder ring-start and single-daemon fixes, and the finding that the hook's inset variables never reached the phone, with the cluster entry that does: https://github.com/bhushangahire/mh2p-cluster
-- **Treuce** — Audi A6 C8 P2873 testing of the Q7 binaries, the BAP guidance-type lead for the cockpit arrow, and the lifecycle design draft (PR #12)
-- **tearfalls1987** — Audi A7 P2873 field notes and compatibility record (displayable 62 composition), cited in PR #12
-- **CrEaK** — Audi A6 C8 P2711: CarPlay map video in the cockpit (altScreen hook), displayable 62 with the hand-back to the Audi map, steering-wheel zoom and layout switching for the phone's map, CarPlay screen bridge: https://github.com/CrEaK
-
----
-
-*Not affiliated with Porsche, Volkswagen, Audi, Apple, or Google. This software is free and not for commercial use.*
+*Not affiliated with Porsche, Volkswagen, Audi, Apple or Google.*

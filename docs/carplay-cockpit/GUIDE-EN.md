@@ -98,4 +98,4 @@ LawPaul (https://github.com/LawPaul), CC BY-NC-SA 4.0, included unchanged.
 
 - Download (latest version): https://github.com/CrEaK/mh2p-cluster/releases
 - Bugs and questions: https://github.com/CrEaK/mh2p-cluster/issues
-- Project status: https://github.com/jonny190/mh2p-cluster/pull/23
+- Project page and tested vehicles: https://github.com/CrEaK/mh2p-cluster

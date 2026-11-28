@@ -12,7 +12,7 @@
 # reach the phone (the hook sends a fixed cluster entry; found on a Q7, PR
 # #11, confirmed in the v0034 source and binary). The margins and insets the
 # phone honours are built into that entry by modkit/template/template.txt
-# when the package is built; see the README's "Fitting the map" section.
+# when the package is built; see "Fitting the map" in docs/audi-notes.md.
 #
 # The stream size asked from the phone (480, 720 or 1080). On Audi the
 # installer sets 1080 by itself, so the 1920-wide frame maps 1:1 onto the

@@ -103,4 +103,4 @@ beigelegt.
 
 - Download (neueste Version): https://github.com/CrEaK/mh2p-cluster/releases
 - Fehler und Fragen: https://github.com/CrEaK/mh2p-cluster/issues
-- Stand des Projekts: https://github.com/jonny190/mh2p-cluster/pull/23
+- Projektseite und getestete Fahrzeuge: https://github.com/CrEaK/mh2p-cluster
