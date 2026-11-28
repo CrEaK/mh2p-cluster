@@ -1,3 +1,7 @@
+# The same settings are in settings.example.txt under plainer names (map_...,
+# zoom_...), together with everything else; that file is the one to use. This
+# one keeps working, and a key in settings.txt wins over the same key here.
+#
 # Copy to altscreen_conf.txt (next to Update/) to tune the CarPlay map in the
 # cockpit (needs enable_carplay_altscreen.txt). One key=value per line, numbers
 # only; '#' starts a comment. install.sh copies the valid lines to

@@ -1,0 +1,158 @@
+# settings.txt: everything the mod can be set to, in one file.
+#
+# How to use it: copy this file to settings.txt (same folder, next to Update/),
+# remove the '#' in front of a line you want, change the value, save, and
+# insert the card again. The installer applies the difference.
+#
+#   - One key=value per line. '#' starts a comment, also behind a value.
+#   - A line that stays commented out changes nothing: the mod then does what
+#     it did before (its default, or what a single file on the card such as
+#     enable_carplay_altscreen.txt or nav_box.txt says).
+#   - A line in settings.txt wins over the single file of the same meaning.
+#   - The installer's log (Logs/ClusterIntegration.log on the card) lists what
+#     it read from this file, and any line it could not use.
+#   - An update does not overwrite your settings.txt.
+#
+# Three files stay files of their own, because they start an action and are
+# no setting: uninstall.txt, force_install.txt, diag.txt.
+
+
+# ---------------------------------------------------------------------------
+# What is shown
+# ---------------------------------------------------------------------------
+
+# The CarPlay map in the cockpit.
+#   1 = the iPhone's navigation map replaces the Audi map in the cockpit
+#   0 = off: CarPlay runs as Audi built it, the cockpit keeps the Audi map
+# Without this line the map is on (the package brings the file
+# enable_carplay_altscreen.txt).
+#carplay_map=1
+
+# The phone's next turn in Audi's own box next to the right dial: arrow,
+# distance, street, arrival time. Software P2711 and P2873 only.
+#   1 = box on
+#   0 = box off
+#turn_box=1
+
+# Where the box shows. Only with turn_box=1.
+#   0 = the box makes way while the cockpit shows the phone's map (the iPhone
+#       draws its own turn card there) and is there in the other cockpit tabs
+#   1 = the box shows in every tab, also over the phone's map
+#turn_box_on_map=0
+
+# The phone's next turn on the head-up display. With arrow and distance on
+# software P2711 and P2873; on other versions the street name only.
+#   0 = off
+#   1 = arrow, distance and street
+#   2 = the same, and the arrow picture also shows the other roads of the
+#       junction as short stubs, when the phone sends them (untested on a car)
+#hud_navigation=1
+
+# Audi's picture with the flag for the last 200 m before the destination, in
+# the box and on the head-up display. Needs turn_box=1 or hud_navigation=1.
+#   1 = flag near the destination
+#   0 = the arrow stays until the end
+#destination_flag=1
+
+# CarPlay's turn data for the box and the head-up display. The installer turns
+# it on by itself as soon as turn_box or hud_navigation is on; set it only to
+# overrule that.
+#   1 = always load the turn data next to the CarPlay map
+#   0 = never (box and head-up display then stay empty with CarPlay)
+#carplay_turns=1
+
+
+# ---------------------------------------------------------------------------
+# The CarPlay map in the cockpit
+# The iPhone reads these when it connects: after the card ran, reconnect.
+# ---------------------------------------------------------------------------
+
+# What the iPhone draws on the cockpit map besides the map itself.
+#   map_turn_card:     1 = the iPhone's card with the next turn, 0 = no card
+#   map_arrival_line:  1 = the iPhone's line with arrival time and distance,
+#                      0 = no line
+#   map_speed_limit:   1 = ask the iPhone for its speed limit sign, 0 = do not
+# With turn_box=1 the turn and the arrival time are in Audi's box already;
+# map_turn_card=0 and map_arrival_line=0 then leave the map free.
+#map_turn_card=1
+#map_arrival_line=1
+#map_speed_limit=1
+
+# Picture areas: the part of the 1920x720 picture that is visible in the
+# cockpit, as left,top,width,height in pixels. The iPhone keeps its cards and
+# the centre of the map inside. "large" is the view with the large map,
+# "small" the view with the large gauges.
+#   A card or the arrival line is hidden at the bottom: lower the last number
+#   in steps of 20. Cut off on the left: raise the first number. Cut off on
+#   the right: lower the third number.
+#map_area_large=500,155,940,410
+#map_area_small=624,158,672,400
+
+# The same two areas for cockpits with the dial in the centre ("Sport", the
+# "Performance" view of S and RS models, e-tron). The mod recognises that
+# layout by itself and then uses these.
+#map_area_sport_large=500,155,940,380
+#map_area_sport_small=54,155,480,370
+
+# Size of the picture in mm (width,height), as told to the iPhone.
+#   larger numbers  = the iPhone draws its cards and texts smaller
+#   smaller numbers = cards and texts get larger
+#map_size_mm=384,144
+
+# Ports the iPhone may send the cockpit video to, tried in this order. Audi's
+# firewall passes these three as it comes.
+#   a list = try these, then fall back to 6031
+#   0      = use 6031 at once, which the mod has to open itself at every start
+#map_ports=6100,6200,7100
+
+# How often a full picture is asked for, in milliseconds (1000 to 60000). A
+# damaged picture heals within that time.
+#   smaller = heals faster, more data
+#   larger  = less data, a damaged picture stays longer
+#map_keyframe_ms=3000
+
+
+# ---------------------------------------------------------------------------
+# Zoom with the steering-wheel roller (CarPlay)
+# ---------------------------------------------------------------------------
+
+# Direction of the roller.
+#   1 = as on the A6 C8
+#   0 = the other way round
+#zoom_invert=1
+
+# Remember the zoom when the car is switched off.
+#   1 = the zoom of the last drive comes back after connecting
+#   0 = every connection starts at the iPhone's own zoom
+#zoom_restore=1
+
+# The largest number of roller steps that is remembered (1 to 30).
+#zoom_max=10
+
+# One zoom per cockpit view.
+#   1 = the large map and the view with the large gauges each keep their own
+#   0 = one zoom for both views
+#zoom_per_view=1
+
+# Pause between two zoom steps when the map moves to the other view's zoom,
+# in milliseconds (50 to 2000). Smaller is faster; too small and the iPhone
+# skips steps.
+#zoom_step_ms=600
+
+
+# ---------------------------------------------------------------------------
+# For special cases
+# ---------------------------------------------------------------------------
+
+# Size of the cockpit display, for cars where the picture ends too early and
+# the right part of the cockpit stays black (Audi Q3 with the Virtual Cockpit
+# Plus).
+#   1920x722 = use this width x height
+#   auto     = the mod finds the size itself (the same as no line)
+#cockpit_size=1920x722
+
+# A detailed log of the program that shows the picture (cluster_daemon.log).
+# Only when asked for it in an issue.
+#   1 = write the log
+#   0 = no log
+#daemon_log=0

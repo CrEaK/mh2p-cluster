@@ -137,7 +137,7 @@ DV=/mnt/app/eso/bin/apps/cluster/daemon_verbose
 rm -f "$SCR/fakesd/Mods/ClusterIntegration/daemon_log.txt"; out=$(run)
 [[ ! -f $DV ]] && echo "$out" | grep -q 'daemon log:        OFF' && res "I daemon_verbose removed when daemon_log.txt is gone" PASS || res "I daemon_verbose removed" FAIL
 DS=/mnt/app/eso/bin/apps/cluster/daemon_size
-echo "$out" | grep -q 'cockpit size:      detected by the daemon (cockpit_size.txt' && [[ ! -f $DS ]] && res "I no cockpit_size.txt: daemon detects the size" PASS || res "I no cockpit_size.txt" FAIL
+echo "$out" | grep -q 'cockpit size:      detected by the daemon (cockpit_size=1920x722 in settings.txt' && [[ ! -f $DS ]] && res "I no cockpit_size.txt: daemon detects the size" PASS || res "I no cockpit_size.txt" FAIL
 printf '1920x722\r\n' > "$SCR/fakesd/Mods/ClusterIntegration/cockpit_size.txt"; out=$(run)
 [[ "$(cat $DS 2>/dev/null)" == 'xres=1920 yres=722' ]] && echo "$out" | grep -q 'cockpit size:      xres=1920 yres=722 (cockpit_size.txt' && res "I cockpit_size.txt installs daemon_size (CR dropped)" PASS || { res "I cockpit_size.txt installs daemon_size" FAIL; cat $DS; }
 grep -q "add $DS" "$MOD_PATH/Backup/manifest.txt" && res "I daemon_size recorded as add" PASS || res "I daemon_size recorded as add" FAIL
@@ -153,7 +153,7 @@ printf '1920x722\n' > "$SCR/fakesd/Mods/ClusterIntegration/cockpit_size.txt"; ru
 rm -f "$SCR/fakesd/Mods/ClusterIntegration/cockpit_size.txt"
 HF=/mnt/app/eso/bin/apps/cluster/hud_feed
 out=$(run)
-echo "$out" | grep -q 'hud arrows:        OFF (trial; create Mods/ClusterIntegration/hud_arrows.txt' && [[ ! -f $HF ]] && res "I no hud_arrows.txt: head-up trial off" PASS || res "I no hud_arrows.txt" FAIL
+echo "$out" | grep -q 'hud arrows:        OFF (trial; hud_navigation=1 in settings.txt' && [[ ! -f $HF ]] && res "I no hud_arrows.txt: head-up trial off" PASS || res "I no hud_arrows.txt" FAIL
 : > "$SCR/fakesd/Mods/ClusterIntegration/hud_arrows.txt"; out=$(run)
 [[ "$(cat $HF 2>/dev/null)" == 1 ]] && echo "$out" | grep -q 'hud arrows:        ON, level 1' && res "I empty hud_arrows.txt installs hud_feed with level 1" PASS || { res "I hud_arrows.txt installs hud_feed" FAIL; cat $HF; }
 grep -q "add $HF" "$MOD_PATH/Backup/manifest.txt" && res "I hud_feed recorded as add" PASS || res "I hud_feed recorded as add" FAIL
@@ -240,7 +240,7 @@ broken() { printf '#!/bin/sh\nexit 126\n' > "$MOD_PATH/navhook/addneeded"; }
 needs() { "$PY" "$RABS/src/navhook/add_needed.py" check $NV/libwatchdog.so dog.so >/dev/null 2>&1; }
 noswitch() { [[ ! -f $AC/komo_feed && ! -f $AC/komo_show && ! -f $AC/komo_hook ]]; }
 navsetup MH2p_ER_AUG35_P2711 4 47516812; out=$(run)
-echo "$out" | grep -q 'nav box:           OFF (trial, Audi P2711 and P2873; create Mods/ClusterIntegration/nav_box.txt' && cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && [[ ! -f $NV/dog.so ]] && noswitch && res "Q no nav_box.txt: off, navigation untouched" PASS || res "Q no nav_box.txt" FAIL
+echo "$out" | grep -q 'nav box:           OFF (trial, Audi P2711 and P2873; turn_box=1 in settings.txt' && cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && [[ ! -f $NV/dog.so ]] && noswitch && res "Q no nav_box.txt: off, navigation untouched" PASS || res "Q no nav_box.txt" FAIL
 touch "$NB"; out=$(run)
 echo "$out" | grep -q 'nav box:           skipped (the helper navhook/addneeded does not run on this unit; nothing changed)' && cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && [[ ! -f $NV/dog.so && ! -f $NV/libwatchdog.so.orig ]] && noswitch && res "Q the unit's helper does not run here: skipped, nothing changed" PASS || { res "Q helper does not run" FAIL; echo "$out" | grep 'nav box'; }
 standin; out=$(run)
@@ -293,15 +293,15 @@ echo "$out" | grep -q 'hud scene:         OFF (the navigation hook could not be 
 rm -f "$HA"
 NT="$SCR/fakesd/Mods/ClusterIntegration/nav_box_tabs.txt"; NF="$SCR/fakesd/Mods/ClusterIntegration/nav_flag.txt"
 navsetup MH2p_ER_AUG35_P2711 4 47516812; touch "$NB"; standin; out=$(run)
-echo "$out" | grep -q 'nav box tabs:      OFF (trial; create Mods/ClusterIntegration/nav_box_tabs.txt' && echo "$out" | grep -q 'nav flag:          OFF (trial; create Mods/ClusterIntegration/nav_flag.txt' && [[ ! -f $AC/komo_tab && ! -f $AC/komo_dest ]] && res "Q box without nav_box_tabs.txt and nav_flag.txt: both off, said so" PASS || { res "Q tabs and flag off" FAIL; echo "$out" | grep -E 'nav box|nav flag'; }
+echo "$out" | grep -q 'nav box tabs:      OFF (trial; the box stays over' && echo "$out" | grep -q 'nav flag:          OFF (trial; destination_flag=1 in settings.txt' && [[ ! -f $AC/komo_tab && ! -f $AC/komo_dest ]] && res "Q box without nav_box_tabs.txt and nav_flag.txt: both off, said so" PASS || { res "Q tabs and flag off" FAIL; echo "$out" | grep -E 'nav box|nav flag'; }
 touch "$NT" "$NF"; out=$(run)
 echo "$out" | grep -q 'nav box tabs:      ON (trial' && echo "$out" | grep -q 'nav flag:          ON (trial' && [[ -f $AC/komo_tab && -f $AC/komo_dest ]] && grep -q "add $AC/komo_tab" "$MOD_PATH/Backup/manifest.txt" && grep -q "add $AC/komo_dest" "$MOD_PATH/Backup/manifest.txt" && res "Q nav_box_tabs.txt and nav_flag.txt with the box: both switches set and recorded" PASS || { res "Q tabs and flag on" FAIL; echo "$out" | grep -E 'nav box|nav flag'; }
 echo test > $AC/komo_dest; out=$(run)
 [[ "$(cat $AC/komo_dest)" == test ]] && echo "$out" | grep -q 'nav flag:          ON (trial' && res "Q a switch that is there keeps its content" PASS || res "Q switch content kept" FAIL
 rm -f "$NB"; touch "$HA"; out=$(run)
-[[ ! -f $AC/komo_tab && -f $AC/komo_dest ]] && echo "$out" | grep -q "nav box tabs:      removed $AC/komo_tab" && echo "$out" | grep -q 'nav box tabs:      ignored (nav_box_tabs.txt needs the box in the cockpit' && echo "$out" | grep -q 'nav flag:          ON (trial' && res "Q head-up display without the box: the flag stays, the tab switch goes and is called ignored" PASS || { res "Q flag with hud only" FAIL; echo "$out" | grep -E 'nav box|nav flag'; }
+[[ ! -f $AC/komo_tab && -f $AC/komo_dest ]] && echo "$out" | grep -q "nav box tabs:      removed $AC/komo_tab" && echo "$out" | grep -q 'nav box tabs:      ignored (turn_box_on_map=0 needs the box in the cockpit' && echo "$out" | grep -q 'nav flag:          ON (trial' && res "Q head-up display without the box: the flag stays, the tab switch goes and is called ignored" PASS || { res "Q flag with hud only" FAIL; echo "$out" | grep -E 'nav box|nav flag'; }
 rm -f "$HA"; out=$(run)
-[[ ! -f $AC/komo_tab && ! -f $AC/komo_dest ]] && echo "$out" | grep -q "nav flag:          removed $AC/komo_dest" && echo "$out" | grep -q 'nav flag:          ignored (nav_flag.txt needs the navigation hook' && res "Q neither box nor head-up display: the flag switch goes and is called ignored" PASS || { res "Q flag without hook" FAIL; echo "$out" | grep -E 'nav box|nav flag'; }
+[[ ! -f $AC/komo_tab && ! -f $AC/komo_dest ]] && echo "$out" | grep -q "nav flag:          removed $AC/komo_dest" && echo "$out" | grep -q 'nav flag:          ignored (destination_flag needs the navigation hook' && res "Q neither box nor head-up display: the flag switch goes and is called ignored" PASS || { res "Q flag without hook" FAIL; echo "$out" | grep -E 'nav box|nav flag'; }
 touch "$NB"; run >/dev/null; rm -f "$NT" "$NF"; out=$(run)
 [[ ! -f $AC/komo_tab && ! -f $AC/komo_dest && -f $AC/komo_show ]] && echo "$out" | grep -q "nav box tabs:      removed $AC/komo_tab" && echo "$out" | grep -q "nav flag:          removed $AC/komo_dest" && res "Q the two files taken away: switches removed, the box stays" PASS || { res "Q tabs and flag removed" FAIL; echo "$out" | grep -E 'nav box|nav flag'; }
 touch "$NT" "$NF"; run >/dev/null; [[ -f $AC/komo_tab && -f $AC/komo_dest ]] || res "Q precondition: tab and flag switches set again" FAIL
@@ -311,10 +311,44 @@ navsetup MH2p_ER_AUG35_P2718 4 47516812; touch "$NB" "$NT" "$NF"; standin; out=$
 echo "$out" | grep -q 'nav box tabs:      ignored' && echo "$out" | grep -q 'nav flag:          ignored' && [[ ! -f $AC/komo_tab && ! -f $AC/komo_dest ]] && res "Q another Audi software: tab and flag files ignored" PASS || { res "Q tabs and flag on P2718" FAIL; echo "$out" | grep -E 'nav box|nav flag'; }
 rm -f "$NT" "$NF"
 navsetup MH2p_ER_AUG35_P2718 4 47516812; touch "$NB"; standin; out=$(run)
-echo "$out" | grep -q 'nav box:           ignored (nav_box.txt works on Audi software P2711 and P2873 only, this is oem=AU sw=2718)' && cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && [[ ! -f $NV/dog.so ]] && noswitch && res "Q another Audi software (P2718): ignored, nothing changed" PASS || { res "Q P2718 ignored" FAIL; echo "$out" | grep 'nav box'; }
+echo "$out" | grep -q 'nav box:           ignored (turn_box works on Audi software P2711 and P2873 only, this is oem=AU sw=2718)' && cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && [[ ! -f $NV/dog.so ]] && noswitch && res "Q another Audi software (P2718): ignored, nothing changed" PASS || { res "Q P2718 ignored" FAIL; echo "$out" | grep 'nav box'; }
 setup MH2p_ER_AUG35_P2711 aa aa "nav_box.txt"; standin; out=$(run)
 echo "$out" | grep -q "nav box:           skipped (no navigation under $NV)" && res "Q no navigation folder: skipped" PASS || { res "Q no navigation folder" FAIL; echo "$out" | grep 'nav box'; }
 rm -rf /mnt/app /fs /ifs "$SCR/jarsrc" "$SCR/wd.orig" "$SCR/wd.patched" /tmp/gal_preload.log
+echo "=== S: settings.txt: one file for the switches and the CarPlay map; the single files count where it is silent"
+SD="$SCR/fakesd/Mods/ClusterIntegration"; SF="$SD/settings.txt"; SC=$AC/altscreen.conf; DS=$AC/daemon_size
+navsetup MH2p_ER_AUG35_P2711 4 47516812; standin; out=$(run)
+echo "$out" | grep -q 'settings:          no settings.txt on the card, the single files count' && res "S no settings.txt: said so, the single files count" PASS || res "S no settings.txt" FAIL
+rm -f /tmp/settings_pwn
+printf '# my car\r\nturn_box = 1   # the box\r\nturn_box_on_map=0\r\nhud_navigation=2\r\ndestination_flag=1\r\ncarplay_map=1\r\nmap_turn_card=0\r\nmap_arrival_line=0\r\nmap_area_large=500,155,940,390\r\nzoom_max=12\r\nturnbox=1\r\nhud_navigation=7\r\nPATH=/evil\r\nturn_box=1;touch /tmp/settings_pwn\r\nmap_ports=$(touch /tmp/settings_pwn)\r\n' > "$SF"; out=$(run)
+echo "$out" | grep -q 'settings:          settings.txt: turn_box=1 turn_box_on_map=0 hud_navigation=2 destination_flag=1 carplay_map=1 map_turn_card=0 map_arrival_line=0 map_area_large=500,155,940,390 zoom_max=12$' && res "S settings.txt read: CR, blanks and comments dropped, the keys listed" PASS || { res "S settings.txt read" FAIL; echo "$out" | grep 'settings:'; }
+[[ $(echo "$out" | grep -c 'settings:          WARN line ignored') -eq 5 ]] && echo "$out" | grep -q 'WARN line ignored (no known key=value): turnbox=1' && echo "$out" | grep -q 'WARN line ignored (no known key=value): hud_navigation=7' && [[ ! -e /tmp/settings_pwn ]] && [[ "$PATH" != /evil ]] && res "S unknown keys and bad values are named and ignored, nothing is run" PASS || { res "S bad lines" FAIL; echo "$out" | grep 'settings:'; ls -la /tmp/settings_pwn 2>&1; }
+echo "$out" | grep -q 'nav box:           ON (trial' && echo "$out" | grep -q 'nav box tabs:      ON (trial' && echo "$out" | grep -q 'nav flag:          ON (trial' && [[ -f $AC/komo_show && -f $AC/komo_tab && -f $AC/komo_dest && -f $NV/dog.so ]] && res "S turn_box, turn_box_on_map=0, destination_flag: box, tab switch and flag set" PASS || { res "S box, tabs, flag from settings.txt" FAIL; echo "$out" | grep -E 'nav box|nav flag'; }
+[[ "$(cat $HF2 2>/dev/null)" == 2 ]] && echo "$out" | grep -q 'hud arrows:        ON, level 2' && echo "$out" | grep -q 'hud scene:         ON' && res "S hud_navigation=2: head-up display with side streets" PASS || { res "S hud_navigation" FAIL; echo "$out" | grep hud; }
+[[ -f $AC/altscreen.so ]] && echo "$out" | grep -q 'carplay altscreen: ON' && res "S carplay_map=1: the map hook is installed without enable_carplay_altscreen.txt" PASS || { res "S carplay_map" FAIL; echo "$out" | grep 'carplay'; }
+[[ -f $AC/carplay_turns ]] && echo "$out" | grep -q 'carplay turns:     ON' && res "S CarPlay turn data comes with the box, without a line of its own" PASS || { res "S carplay turns follow the box" FAIL; echo "$out" | grep 'carplay turns'; }
+[[ "$(cat $SC 2>/dev/null)" == $'turncard=0\neta=0\nlarge=500,155,940,390\nzoom_max=12' ]] && res "S map_ and zoom_ keys become altscreen.conf under the hook's names" PASS || { res "S map keys" FAIL; cat $SC; }
+out=$(run); echo "$out" | grep -q "skip identical:    $SC" && echo "$out" | grep -q "skip identical:    $HF2" && res "S a second run changes nothing" PASS || { res "S second run" FAIL; echo "$out" | grep -E 'altscreen conf|skip identical'; }
+printf 'large=1,2,3,4\nphys=300,100\n' > "$SD/altscreen_conf.txt"; out=$(run)
+[[ "$(cat $SC 2>/dev/null)" == $'large=500,155,940,390\nphys=300,100\nturncard=0\neta=0\nzoom_max=12' ]] && res "S altscreen_conf.txt and settings.txt together: one line per key, settings.txt wins" PASS || { res "S conf merge" FAIL; cat $SC; }
+rm -f "$SD/altscreen_conf.txt"; printf 'turn_box=1\ncarplay_map=1\ncarplay_turns=0\n' > "$SF"; out=$(run)
+[[ ! -f $SC ]] && echo "$out" | grep -q 'altscreen conf:    settings.txt has no setting, removed' && res "S settings.txt without a map key: altscreen.conf removed, defaults again" PASS || { res "S conf removed" FAIL; echo "$out" | grep 'altscreen conf'; }
+[[ ! -f $AC/carplay_turns && ! -f $AC/komo_tab && ! -f $AC/komo_dest && ! -f $HF2 && -f $AC/komo_show ]] && res "S lines taken out: flag, tab switch, head-up display go, carplay_turns=0 overrules, the box stays" PASS || { res "S lines taken out" FAIL; ls $AC; }
+touch "$SD/nav_box.txt" "$SD/nav_box_tabs.txt" "$SD/nav_flag.txt" "$SD/hud_arrows.txt" "$SD/enable_carplay_altscreen.txt" "$SD/carplay_turns.txt" "$SD/daemon_log.txt"; printf '1920x722\n' > "$SD/cockpit_size.txt"
+printf '# nothing set\n' > "$SF"; out=$(run)
+echo "$out" | grep -q 'settings:          settings.txt: no setting' && [[ -f $AC/komo_show && -f $AC/komo_tab && -f $AC/komo_dest && -f $AC/carplay_turns && -f $AC/altscreen.so && -f $AC/daemon_verbose ]] && [[ "$(cat $HF2)" == 1 && "$(cat $DS)" == 'xres=1920 yres=722' ]] && res "S an empty settings.txt: every single file counts as before" PASS || { res "S single files count" FAIL; ls $AC; }
+printf 'turn_box_on_map=1\ndestination_flag=0\nhud_navigation=0\ndaemon_log=0\ncockpit_size=auto\n' > "$SF"; out=$(run)
+[[ -f $AC/komo_show && ! -f $AC/komo_tab && ! -f $AC/komo_dest && ! -f $HF2 && ! -f $AC/daemon_verbose && ! -f $DS && -f $AC/altscreen.so ]] && res "S settings.txt wins over the single files, key by key" PASS || { res "S settings.txt wins" FAIL; ls $AC; echo "$out" | grep -E 'nav box|nav flag|hud|daemon log|cockpit size'; }
+printf 'turn_box=0\ncarplay_map=0\n' > "$SF"; out=$(run)
+[[ -f $NV/dog.so && -f $AC/komo_hook && ! -f $AC/komo_show && ! -f $AC/komo_feed && ! -f $AC/altscreen.so && ! -f $AC/carplay_turns ]] && [[ "$(cat $HF2 2>/dev/null)" == 1 ]] && echo "$out" | grep -q 'hud scene:         ON (the navigation hook draws the arrow on the head-up display, without the box' && res "S turn_box=0 and carplay_map=0 with the files on the card: box and map out, the head-up file still counts" PASS || { res "S switches off" FAIL; ls $AC $NV; echo "$out" | grep -E 'nav box|carplay|hud'; }
+rm -f "$SD"/nav_box.txt "$SD"/nav_box_tabs.txt "$SD"/nav_flag.txt "$SD"/hud_arrows.txt "$SD"/enable_carplay_altscreen.txt "$SD"/carplay_turns.txt "$SD"/daemon_log.txt "$SD"/cockpit_size.txt
+printf 'cockpit_size=1920X722\ndaemon_log=1\n' > "$SF"; out=$(run)
+[[ "$(cat $DS 2>/dev/null)" == 'xres=1920 yres=722' && -f $AC/daemon_verbose ]] && echo "$out" | grep -q 'cockpit size:      xres=1920 yres=722 (cockpit_size in settings.txt' && res "S cockpit_size and daemon_log from settings.txt" PASS || { res "S cockpit_size, daemon_log" FAIL; echo "$out" | grep -E 'cockpit size|daemon log'; }
+printf 'cockpit_size=32x722\n' > "$SF"; out=$(run)
+[[ ! -f $DS ]] && echo "$out" | grep -q 'cockpit size:      WARN cockpit_size=32x722 in settings.txt is out of range' && res "S a cockpit size out of range is refused" PASS || { res "S cockpit size out of range" FAIL; echo "$out" | grep 'cockpit size'; }
+navsetup MH2p_ER_AUG35_P2718 4 47516812; standin; printf 'turn_box=1\nturn_box_on_map=0\ndestination_flag=1\n' > "$SF"; out=$(run)
+echo "$out" | grep -q 'nav box:           ignored (turn_box works on Audi software P2711 and P2873 only' && echo "$out" | grep -q 'carplay turns:     OFF' && noswitch && cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && res "S another Audi software: the box from settings.txt is ignored, nothing changed" PASS || { res "S P2718" FAIL; echo "$out" | grep -E 'nav box|carplay turns'; }
+rm -rf /mnt/app /fs /ifs "$SCR/jarsrc" "$SCR/wd.orig" /tmp/gal_preload.log /tmp/settings_pwn
 echo "=== O: gal wrapper starts the cluster daemon when it is missing"
 setup MH2p_ER_AUG35_P2873 aa aa ""; run >/dev/null
 printf '#!/bin/sh\necho "daemon-stub $*"\nsleep 20\n' > "$MOD_PATH/aa_only/cluster"; run >/dev/null   # a daemon stand-in that stays alive

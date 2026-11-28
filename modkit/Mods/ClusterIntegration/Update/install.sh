@@ -13,6 +13,10 @@
 # - Supported head units: Porsche PCM5 (OEM=PO, firmware 26xx/28xx, tested)
 #   and Audi MH2p (OEM=AU, experimental). Other OEMs abort unless
 #   Mods/ClusterIntegration/force_install.txt exists on the SD card.
+# - settings.txt next to the Update/ folder on the SD card: one file with
+#   key=value lines for the switches and the CarPlay map (see
+#   settings.example.txt and the block that reads it below). A key in it wins
+#   over the single file of the same meaning.
 # - Marker files next to the Update/ folder on the SD card:
 #     force_install.txt   skip the OEM / firmware gate
 #     diag.txt            hook logs only, no cluster service injected,
@@ -240,13 +244,98 @@ MOD_ROOT="${MOD_PATH%/*}"
 FORCE_INSTALL=0
 [[ -e "$MOD_ROOT/force_install.txt" ]] && FORCE_INSTALL=1
 
-print "Head unit:         release=$RELEASE_VERSION oem=$OEM type=$TYPE region=$REGION sw=$SOFTWARE_VERSION force=$FORCE_INSTALL"
+print "Head unit:        release=$RELEASE_VERSION oem=$OEM type=$TYPE region=$REGION sw=$SOFTWARE_VERSION force=$FORCE_INSTALL"
 print "tools missing:    ${TOOLS_MISSING:- none}"
 case "$FILE_CMP" in
     "")  print "file compare:      size only (no cmp, diff, sum, cksum, md5sum, od or wc on this unit)" ;;
     wc)  print "file compare:      wc (byte, line and word counts; no checksum tool on this unit)" ;;
     *)   print "file compare:      $FILE_CMP" ;;
 esac
+
+# One settings file. Mods/ClusterIntegration/settings.txt on the card holds
+# key=value lines (see settings.example.txt) for everything the single files
+# below switch, and for the CarPlay map. A key in settings.txt decides; for a
+# key it does not name, the single file on the card counts as before
+# (enable_carplay_altscreen.txt, nav_box.txt, ...), so a card set up for an
+# earlier version keeps working. The files that start an action and are no
+# setting stay files: uninstall.txt, force_install.txt, diag.txt.
+#   carplay_map=0|1         enable_carplay_altscreen.txt
+#   turn_box=0|1            nav_box.txt
+#   turn_box_on_map=0|1     0 is what nav_box_tabs.txt does: no box while the
+#                           cockpit shows the phone's map
+#   hud_navigation=0|1|2    hud_arrows.txt (2 = side streets too)
+#   destination_flag=0|1    nav_flag.txt
+#   carplay_turns=0|1       carplay_turns.txt; without the key it follows
+#                           turn_box and hud_navigation
+#   cockpit_size=WxH|auto   cockpit_size.txt
+#   daemon_log=0|1          daemon_log.txt
+#   map_* and zoom_*        the keys of altscreen_conf.txt under plain names
+SETTINGS_SRC="$MOD_ROOT/settings.txt"
+SETTINGS_STAGE="/tmp/cluster_settings.$$"
+SETTINGS_LIST=""
+rm -f "$SETTINGS_STAGE"
+if [[ -f "$SETTINGS_SRC" ]]; then
+    awk '{ sub(/\r$/, ""); sub(/#.*$/, ""); gsub(/[ \t]/, "") }
+         /^$/ { next }
+         /^(carplay_map|turn_box|turn_box_on_map|destination_flag|carplay_turns|daemon_log)=[01]$/ { print; next }
+         /^hud_navigation=[012]$/ { print; next }
+         /^cockpit_size=([0-9]+[xX][0-9]+|auto)$/ { print tolower($0); next }
+         /^(map_area_large|map_area_small|map_area_sport_large|map_area_sport_small|map_size_mm|map_turn_card|map_arrival_line|map_speed_limit|map_ports|map_keyframe_ms|zoom_invert|zoom_restore|zoom_per_view|zoom_max|zoom_step_ms)=[0-9]+(,[0-9]+)*$/ { print; next }
+         { print "BAD=" $0 }' "$SETTINGS_SRC" > "$SETTINGS_STAGE" 2>/dev/null
+    while IFS='=' read -r SETTINGS_K SETTINGS_V; do
+        case "$SETTINGS_K" in
+            "") ;;
+            BAD) print "settings:          WARN line ignored (no known key=value): $SETTINGS_V" ;;
+            *)   eval "SET_$SETTINGS_K=\$SETTINGS_V"; SETTINGS_LIST="$SETTINGS_LIST $SETTINGS_K=$SETTINGS_V" ;;
+        esac
+    done < "$SETTINGS_STAGE"
+    rm -f "$SETTINGS_STAGE"
+    print "settings:          settings.txt:${SETTINGS_LIST:- no setting}"
+else
+    print "settings:          no settings.txt on the card, the single files count (settings.example.txt shows the file)"
+fi
+# card_switch KEY FILE: is the switch on? settings.txt decides when it names
+# the key, otherwise the single file on the card.
+card_switch() {
+    typeset v
+    eval "v=\${SET_$1:-}"
+    if [[ -n "$v" ]]; then
+        [[ "$v" != 0 ]]
+        return
+    fi
+    [[ -e "$MOD_ROOT/$2" ]]
+}
+WANT_MAP=0;   card_switch carplay_map enable_carplay_altscreen.txt && WANT_MAP=1
+WANT_BOX=0;   card_switch turn_box nav_box.txt && WANT_BOX=1
+WANT_FLAG=0;  card_switch destination_flag nav_flag.txt && WANT_FLAG=1
+WANT_DLOG=0;  card_switch daemon_log daemon_log.txt && WANT_DLOG=1
+# head-up display: 0 off, 1 arrow, distance and road, 2 side streets too
+WANT_HUD=0
+if [[ -n "${SET_hud_navigation:-}" ]]; then
+    WANT_HUD=$SET_hud_navigation
+elif [[ -f "$MOD_ROOT/hud_arrows.txt" ]]; then
+    WANT_HUD=1
+    HUD_FIRST=""
+    read HUD_FIRST < "$MOD_ROOT/hud_arrows.txt"
+    case "$HUD_FIRST" in 2*) WANT_HUD=2 ;; esac
+fi
+# the box makes way for the phone's map: turn_box_on_map=0, or nav_box_tabs.txt
+WANT_TABS=0
+if [[ -n "${SET_turn_box_on_map:-}" ]]; then
+    [[ "$SET_turn_box_on_map" == 0 ]] && WANT_TABS=1
+elif [[ -e "$MOD_ROOT/nav_box_tabs.txt" ]]; then
+    WANT_TABS=1
+fi
+# CarPlay's turn data: asked for by name, or because the box or the head-up
+# display would have nothing to show with CarPlay without it
+WANT_TURNS=0; TURNS_ASKED=0
+if [[ -n "${SET_carplay_turns:-}" ]]; then
+    WANT_TURNS=$SET_carplay_turns; TURNS_ASKED=$SET_carplay_turns
+elif [[ -e "$MOD_ROOT/carplay_turns.txt" ]]; then
+    WANT_TURNS=1; TURNS_ASKED=1
+elif [[ $WANT_BOX -eq 1 || $WANT_HUD -gt 0 ]]; then
+    WANT_TURNS=1
+fi
 
 # Supported head units:
 #   PO  Porsche PCM5 (MH2P) firmware 26xx / 28xx     - tested
@@ -279,7 +368,7 @@ case "$OEM" in
         else
             print "$brand firmware $RELEASE_VERSION OK, installing..."
         fi
-        if [[ "$OEM" == "AU" && "$SOFTWARE_VERSION" == 2711 && -e "$MOD_ROOT/enable_carplay_altscreen.txt" ]]; then
+        if [[ "$OEM" == "AU" && "$SOFTWARE_VERSION" == 2711 && $WANT_MAP -eq 1 ]]; then
             # The CarPlay cockpit map (altScreen) was built and tested on
             # P2711 (A6 C8, EU and US units); the Porsche-window warning below
             # is about the Android Auto hooks and only confused its users.
@@ -362,12 +451,12 @@ fi
 # and the dio_manager wrapper, which preloads altscreen.so when it is installed.
 ALTSCREEN=0
 ALT_SRC="$MOD_PATH/altscreen"
-if [[ "$OEM" == "AU" && -e "$MOD_ROOT/enable_carplay_altscreen.txt" ]]; then
+if [[ "$OEM" == "AU" && $WANT_MAP -eq 1 ]]; then
     if [[ $FULL_JAR -eq 1 ]]; then
-        print "WARN: enable_carplay_altscreen.txt needs the Audi JAR and is ignored while enable_carplay.txt is present."
+        print "WARN: the CarPlay map (carplay_map=1 or enable_carplay_altscreen.txt) needs the Audi JAR and is ignored while enable_carplay.txt is present."
     elif [[ ! -f "$ALT_SRC/altscreen.so" || ! -f "$ALT_SRC/altscreen_pf.sh" ]]; then
         print -u2 "ERROR: $ALT_SRC/altscreen.so or altscreen_pf.sh not found. Aborting before any change."
-        print -u2 "       Extract the whole Audi zip to an empty card, or delete enable_carplay_altscreen.txt."
+        print -u2 "       Extract the whole Audi zip to an empty card, or turn the CarPlay map off (carplay_map=0 in settings.txt, or delete enable_carplay_altscreen.txt)."
         exit 4
     else
         ALTSCREEN=1
@@ -829,23 +918,53 @@ if [[ $ALTSCREEN -eq 1 ]]; then
         print "carplay altscreen: WARN could not set mirror.mode in cluster_config.json; the JAR sets it before every start anyway"
     fi
     [[ -f "$CLUSTER_DIR/altscreen_off" ]] && print "carplay altscreen: WARN $CLUSTER_DIR/altscreen_off exists, the hook stays passive until it is deleted"
-    # Per-car tuning of the CarPlay cockpit map without a shell on the unit:
-    # Mods/ClusterIntegration/altscreen_conf.txt holds key=value lines for the
-    # hook (see altscreen_conf.example.txt); the valid ones become
-    # $CLUSTER_DIR/altscreen.conf, which the hook reads at every connection.
-    # A file without a valid line removes an installed altscreen.conf, so the
-    # hook's defaults apply again. Without the file nothing is touched: an
-    # altscreen.conf made by hand on the unit stays.
+    # Per-car tuning of the CarPlay cockpit map without a shell on the unit.
+    # Two sources on the card: the map_* and zoom_* keys of settings.txt (under
+    # the hook's own names here) and, as before, Mods/ClusterIntegration/
+    # altscreen_conf.txt with key=value lines for the hook (see
+    # altscreen_conf.example.txt). Together they become
+    # $CLUSTER_DIR/altscreen.conf, which the hook reads at every connection; a
+    # key in settings.txt wins over the same key in altscreen_conf.txt. When
+    # the files on the card hold no setting for the map, an installed
+    # altscreen.conf is removed, so the hook's defaults apply again. With
+    # neither file on the card nothing is touched: an altscreen.conf made by
+    # hand on the unit stays.
     ALT_CONF_SRC="$MOD_ROOT/altscreen_conf.txt"
     ALT_CONF_DST="$CLUSTER_DIR/altscreen.conf"
     ALT_CONF_STAGE="/tmp/cluster_altscreen_conf.$$"
-    rm -f "$ALT_CONF_STAGE"
+    ALT_CONF_WHO=""
+    rm -f "$ALT_CONF_STAGE" "$ALT_CONF_STAGE.2"
     if [[ -f "$ALT_CONF_SRC" ]]; then
+        ALT_CONF_WHO="altscreen_conf.txt"
         awk '{ sub(/\r$/, ""); sub(/[ \t]*#.*$/, ""); gsub(/^[ \t]+|[ \t]+$/, "") }
              /^(phys|large|small|sport_large|sport_small|zoom_invert|zoom_restore|zoom_per_view|zoom_max|zoom_step_ms|speedlimit|eta|turncard|ports|keyframe_ms)=[0-9]+(,[0-9]+)*$/ { print; next }
              /./ { bad++ }
              END { exit (bad > 0 ? 1 : 0) }' "$ALT_CONF_SRC" > "$ALT_CONF_STAGE" 2>/dev/null
         [[ $? -ne 0 ]] && print "altscreen conf:    WARN altscreen_conf.txt has lines that are not key=numbers with a known key; they are ignored"
+    fi
+    if [[ -f "$SETTINGS_SRC" ]]; then
+        ALT_CONF_WHO="${ALT_CONF_WHO:+$ALT_CONF_WHO and }settings.txt"
+        for kv in $SETTINGS_LIST; do
+            case "${kv%%=*}" in
+                map_area_large)       print "large=${kv#*=}" ;;
+                map_area_small)       print "small=${kv#*=}" ;;
+                map_area_sport_large) print "sport_large=${kv#*=}" ;;
+                map_area_sport_small) print "sport_small=${kv#*=}" ;;
+                map_size_mm)          print "phys=${kv#*=}" ;;
+                map_turn_card)        print "turncard=${kv#*=}" ;;
+                map_arrival_line)     print "eta=${kv#*=}" ;;
+                map_speed_limit)      print "speedlimit=${kv#*=}" ;;
+                map_ports)            print "ports=${kv#*=}" ;;
+                map_keyframe_ms)      print "keyframe_ms=${kv#*=}" ;;
+                zoom_*)               print "$kv" ;;
+            esac
+        done >> "$ALT_CONF_STAGE"
+        # one line per key: the last one wins, at the place of the first
+        awk -F= '{ if (!($1 in v)) order[++n] = $1; v[$1] = $0 }
+                 END { for (i = 1; i <= n; i++) print v[order[i]] }' "$ALT_CONF_STAGE" > "$ALT_CONF_STAGE.2" 2>/dev/null \
+            && mv "$ALT_CONF_STAGE.2" "$ALT_CONF_STAGE"
+    fi
+    if [[ -n "$ALT_CONF_WHO" ]]; then
         if [[ -s "$ALT_CONF_STAGE" ]]; then
             # the staged file is new every run, so compare by content, not time
             text_same "$ALT_CONF_STAGE" "$ALT_CONF_DST"
@@ -857,13 +976,14 @@ if [[ $ALTSCREEN -eq 1 ]]; then
             awk '{ printf "altscreen conf:    %s\n", $0 }' "$ALT_CONF_DST"
         elif [[ -f "$ALT_CONF_DST" ]]; then
             bk="$BACKUP_DIR/altscreen.conf.backup.$(ts)"
-            cp -p "$ALT_CONF_DST" "$bk" && rm -f "$ALT_CONF_DST" && print "altscreen conf:    altscreen_conf.txt has no setting, removed $ALT_CONF_DST -> $bk" && note "remove $ALT_CONF_DST backup=$bk"
+            cp -p "$ALT_CONF_DST" "$bk" && rm -f "$ALT_CONF_DST" && print "altscreen conf:    $ALT_CONF_WHO has no setting, removed $ALT_CONF_DST -> $bk" && note "remove $ALT_CONF_DST backup=$bk"
         else
-            print "altscreen conf:    altscreen_conf.txt has no setting, the hook uses its defaults"
+            print "altscreen conf:    $ALT_CONF_WHO has no setting, the hook uses its defaults"
         fi
     elif [[ -f "$ALT_CONF_DST" ]]; then
         awk '{ printf "altscreen conf:    %s (installed file, kept)\n", $0 }' "$ALT_CONF_DST"
     fi
+    rm -f "$ALT_CONF_STAGE.2"
     rm -f "$ALT_CONF_STAGE"
 else
     typeset af
@@ -873,7 +993,7 @@ else
             cp -p "$CLUSTER_DIR/$af" "$bk" && rm -f "$CLUSTER_DIR/$af" && print "remove altscreen:  $CLUSTER_DIR/$af -> $bk" && note "remove $CLUSTER_DIR/$af backup=$bk"
         fi
     done
-    [[ "$OEM" == "AU" ]] && print "carplay altscreen: OFF (create Mods/ClusterIntegration/enable_carplay_altscreen.txt for the CarPlay map video in the cockpit)"
+    [[ "$OEM" == "AU" ]] && print "carplay altscreen: OFF (carplay_map=1 in Mods/ClusterIntegration/settings.txt turns on the CarPlay map video in the cockpit)"
 fi
 
 # Audi defaults for the Android Auto map video. The cluster entry built into
@@ -981,9 +1101,8 @@ rm -f "$GAL_ENV_STAGE"
 # then start the cluster daemon with verbose=2 (cluster_daemon.log on the
 # first writable USB stick, else /tmp, capped at 1 MB). Without the file the
 # daemon runs quiet and an installed marker is removed.
-DAEMON_LOG_SRC="$MOD_ROOT/daemon_log.txt"
 DAEMON_LOG_DST="$CLUSTER_DIR/daemon_verbose"
-if [[ -f "$DAEMON_LOG_SRC" ]]; then
+if [[ $WANT_DLOG -eq 1 ]]; then
     if [[ ! -f "$DAEMON_LOG_DST" ]]; then
         : > "$DAEMON_LOG_DST" && note "add $DAEMON_LOG_DST"
     fi
@@ -991,7 +1110,7 @@ if [[ -f "$DAEMON_LOG_SRC" ]]; then
 elif [[ -f "$DAEMON_LOG_DST" ]]; then
     rm -f "$DAEMON_LOG_DST" && print "daemon log:        OFF (removed $DAEMON_LOG_DST)" && note "remove $DAEMON_LOG_DST"
 else
-    print "daemon log:        OFF (create Mods/ClusterIntegration/daemon_log.txt to turn it on)"
+    print "daemon log:        OFF (daemon_log=1 in settings.txt turns it on)"
 fi
 
 # Cockpit size. The cluster daemon finds the size of the cockpit display by
@@ -1008,13 +1127,22 @@ SIZE_SRC="$MOD_ROOT/cockpit_size.txt"
 SIZE_DST="$CLUSTER_DIR/daemon_size"
 SIZE_STAGE="/tmp/cluster_size.$$"
 rm -f "$SIZE_STAGE"
-if [[ -f "$SIZE_SRC" ]]; then
-    awk '{ sub(/\r$/, ""); sub(/[ \t]*#.*$/, ""); gsub(/[ \t]/, "") }
+SIZE_AWK='{ sub(/\r$/, ""); sub(/[ \t]*#.*$/, ""); gsub(/[ \t]/, "") }
          /^[0-9]+[xX][0-9]+$/ && !n {
              split(tolower($0), a, "x"); w = a[1] + 0; h = a[2] + 0
              if (w >= 64 && w <= 4096 && h >= 64 && h <= 4096) { printf "xres=%d yres=%d\n", w, h; n = 1 }
          }
-         END { exit (n ? 0 : 1) }' "$SIZE_SRC" > "$SIZE_STAGE" 2>/dev/null
+         END { exit (n ? 0 : 1) }'
+SIZE_FROM="cockpit_size.txt"
+if [[ -n "${SET_cockpit_size:-}" ]]; then
+    # settings.txt decides: a size, or "auto" for the daemon's own detection
+    SIZE_FROM="cockpit_size in settings.txt"
+    if [[ "$SET_cockpit_size" != auto ]]; then
+        print "$SET_cockpit_size" | awk "$SIZE_AWK" > "$SIZE_STAGE" 2>/dev/null
+        [[ -s "$SIZE_STAGE" ]] || print "cockpit size:      WARN cockpit_size=$SET_cockpit_size in settings.txt is out of range (64 to 4096 each), ignored"
+    fi
+elif [[ -f "$SIZE_SRC" ]]; then
+    awk "$SIZE_AWK" "$SIZE_SRC" > "$SIZE_STAGE" 2>/dev/null
     [[ -s "$SIZE_STAGE" ]] || print "cockpit size:      WARN cockpit_size.txt has no line like 1920x722 (64 to 4096 each), ignored"
 fi
 if [[ -s "$SIZE_STAGE" ]]; then
@@ -1025,11 +1153,11 @@ if [[ -s "$SIZE_STAGE" ]]; then
     else
         install_file "$SIZE_STAGE" "$SIZE_DST" && chmod 644 "$SIZE_DST" 2>/dev/null
     fi
-    awk '{ printf "cockpit size:      %s (cockpit_size.txt; the daemon skips its own detection)\n", $0 }' "$SIZE_DST"
+    awk -v from="$SIZE_FROM" '{ printf "cockpit size:      %s (%s; the daemon skips its own detection)\n", $0, from }' "$SIZE_DST"
 elif [[ -f "$SIZE_DST" ]]; then
     rm -f "$SIZE_DST" && print "cockpit size:      detected by the daemon (removed $SIZE_DST)" && note "remove $SIZE_DST"
 else
-    print "cockpit size:      detected by the daemon (cockpit_size.txt with a line like 1920x722 sets it)"
+    print "cockpit size:      detected by the daemon (cockpit_size=1920x722 in settings.txt sets it)"
 fi
 rm -f "$SIZE_STAGE"
 
@@ -1041,14 +1169,11 @@ rm -f "$SIZE_STAGE"
 # road, 2 = side streets too (a "2" as the first character of hud_arrows.txt).
 # The JAR looks for the file when the MMI starts. Without hud_arrows.txt an
 # installed hud_feed is removed and the JAR does nothing of this.
-HUD_SRC="$MOD_ROOT/hud_arrows.txt"
 HUD_DST="$CLUSTER_DIR/hud_feed"
 HUD_STAGE="/tmp/cluster_hud.$$"
 rm -f "$HUD_STAGE"
-if [[ -f "$HUD_SRC" ]]; then
-    HUD_LEVEL=1
-    read HUD_FIRST < "$HUD_SRC"
-    case "$HUD_FIRST" in 2*) HUD_LEVEL=2 ;; esac
+if [[ $WANT_HUD -gt 0 ]]; then
+    HUD_LEVEL=$WANT_HUD
     print "$HUD_LEVEL" > "$HUD_STAGE"
     text_same "$HUD_STAGE" "$HUD_DST"
     if [[ $? -eq 0 ]]; then
@@ -1060,7 +1185,7 @@ if [[ -f "$HUD_SRC" ]]; then
 elif [[ -f "$HUD_DST" ]]; then
     rm -f "$HUD_DST" && print "hud arrows:        OFF (removed $HUD_DST)" && note "remove $HUD_DST"
 else
-    print "hud arrows:        OFF (trial; create Mods/ClusterIntegration/hud_arrows.txt to turn it on)"
+    print "hud arrows:        OFF (trial; hud_navigation=1 in settings.txt turns it on)"
 fi
 rm -f "$HUD_STAGE"
 
@@ -1071,19 +1196,18 @@ rm -f "$HUD_STAGE"
 # wrapper then preloads dio_cluster.so as well (the hooks take over different
 # functions). Only with enable_carplay_altscreen.txt: without the map hook
 # the wrapper loads dio_cluster.so alone anyway.
-TURNS_SRC="$MOD_ROOT/carplay_turns.txt"
 TURNS_DST="$CLUSTER_DIR/carplay_turns"
-if [[ -f "$TURNS_SRC" && $ALTSCREEN -eq 1 ]]; then
+if [[ $WANT_TURNS -eq 1 && $ALTSCREEN -eq 1 ]]; then
     if [[ ! -f "$TURNS_DST" ]]; then
         : > "$TURNS_DST" && note "add $TURNS_DST"
     fi
     print "carplay turns:     ON (trial; dio_cluster.so is loaded next to altscreen.so, wireless CarPlay, active after the next MMI start)"
 else
     [[ -f "$TURNS_DST" ]] && rm -f "$TURNS_DST" && print "carplay turns:     removed $TURNS_DST" && note "remove $TURNS_DST"
-    if [[ -f "$TURNS_SRC" ]]; then
-        print "carplay turns:     ignored (carplay_turns.txt needs enable_carplay_altscreen.txt)"
+    if [[ $TURNS_ASKED -eq 1 ]]; then
+        print "carplay turns:     ignored (carplay_turns needs the CarPlay map: carplay_map=1 or enable_carplay_altscreen.txt)"
     else
-        print "carplay turns:     OFF (trial; with the CarPlay map, create Mods/ClusterIntegration/carplay_turns.txt for turn data)"
+        print "carplay turns:     OFF (trial; comes with turn_box or hud_navigation next to the CarPlay map)"
     fi
 fi
 
@@ -1099,7 +1223,6 @@ fi
 # (the hook is armed). With CarPlay the turn data needs carplay_turns.txt as
 # well. Without nav_box.txt and hud_arrows.txt, or where the hook cannot be
 # installed, all of it is taken out again.
-NAVBOX_SRC="$MOD_ROOT/nav_box.txt"
 # The arrow on the head-up display (hud_arrows.txt above) comes from the same
 # renderer and needs the hook as well, but not the box: with hud_arrows.txt
 # alone the hook and komo_hook are installed and the two box switches are not.
@@ -1110,10 +1233,10 @@ if [[ -f "$MOD_PATH/navhook/navhook.sh" ]]; then
     NAVHOOK_ON=0
     NAVBOX_FW=0
     [[ "$OEM" == "AU" && ( "$SOFTWARE_VERSION" == 2711 || "$SOFTWARE_VERSION" == 2873 ) ]] && NAVBOX_FW=1
-    if [[ ( -f "$NAVBOX_SRC" || -f "$HUD_SRC" ) && $NAVBOX_FW -eq 1 ]]; then
+    if [[ ( $WANT_BOX -eq 1 || $WANT_HUD -gt 0 ) && $NAVBOX_FW -eq 1 ]]; then
         navhook_install && NAVHOOK_ON=1
     fi
-    [[ $NAVHOOK_ON -eq 1 && -f "$NAVBOX_SRC" ]] && NAVBOX_ON=1
+    [[ $NAVHOOK_ON -eq 1 && $WANT_BOX -eq 1 ]] && NAVBOX_ON=1
     if [[ $NAVHOOK_ON -eq 1 ]]; then
         if [[ ! -f "$CLUSTER_DIR/komo_hook" ]]; then
             : > "$CLUSTER_DIR/komo_hook" && note "add $CLUSTER_DIR/komo_hook"
@@ -1134,10 +1257,10 @@ if [[ -f "$MOD_PATH/navhook/navhook.sh" ]]; then
         for NAVBOX_SW in komo_feed komo_show; do
             [[ -f "$CLUSTER_DIR/$NAVBOX_SW" ]] && rm -f "$CLUSTER_DIR/$NAVBOX_SW" && print "nav box:           removed $CLUSTER_DIR/$NAVBOX_SW" && note "remove $CLUSTER_DIR/$NAVBOX_SW"
         done
-        if [[ ! -f "$NAVBOX_SRC" ]]; then
-            print "nav box:           OFF (trial, Audi P2711 and P2873; create Mods/ClusterIntegration/nav_box.txt for the phone's turn in Audi's cockpit box)"
+        if [[ $WANT_BOX -eq 0 ]]; then
+            print "nav box:           OFF (trial, Audi P2711 and P2873; turn_box=1 in settings.txt puts the phone's turn in Audi's cockpit box)"
         elif [[ $NAVBOX_FW -eq 0 ]]; then
-            print "nav box:           ignored (nav_box.txt works on Audi software P2711 and P2873 only, this is oem=$OEM sw=$SOFTWARE_VERSION)"
+            print "nav box:           ignored (turn_box works on Audi software P2711 and P2873 only, this is oem=$OEM sw=$SOFTWARE_VERSION)"
         fi
     fi
     # Two more switches, which the JAR looks at while it runs. komo_tab: the box
@@ -1147,35 +1270,33 @@ if [[ -f "$MOD_PATH/navhook/navhook.sh" ]]; then
     # manoeuvre is the arrival and 200 m away or nearer (nav_flag.txt, needs
     # the hook, so the box or the head-up display's arrow). A switch that is
     # there is left as it is: its content may be a setting made by hand.
-    NAVTAB_SRC="$MOD_ROOT/nav_box_tabs.txt"
-    NAVFLAG_SRC="$MOD_ROOT/nav_flag.txt"
-    if [[ -f "$NAVTAB_SRC" && $NAVBOX_ON -eq 1 ]]; then
+    if [[ $WANT_TABS -eq 1 && $NAVBOX_ON -eq 1 ]]; then
         if [[ ! -f "$CLUSTER_DIR/komo_tab" ]]; then
             : > "$CLUSTER_DIR/komo_tab" && note "add $CLUSTER_DIR/komo_tab"
         fi
         print "nav box tabs:      ON (trial; no box while the cockpit shows the phone's map, the box in the other tabs)"
     else
         [[ -f "$CLUSTER_DIR/komo_tab" ]] && rm -f "$CLUSTER_DIR/komo_tab" && print "nav box tabs:      removed $CLUSTER_DIR/komo_tab" && note "remove $CLUSTER_DIR/komo_tab"
-        if [[ -f "$NAVTAB_SRC" ]]; then
-            print "nav box tabs:      ignored (nav_box_tabs.txt needs the box in the cockpit, see the nav box line above)"
+        if [[ $WANT_TABS -eq 1 ]]; then
+            print "nav box tabs:      ignored (turn_box_on_map=0 needs the box in the cockpit, see the nav box line above)"
         elif [[ $NAVBOX_ON -eq 1 ]]; then
-            print "nav box tabs:      OFF (trial; create Mods/ClusterIntegration/nav_box_tabs.txt and the box makes way for the phone's map)"
+            print "nav box tabs:      OFF (trial; the box stays over the phone's map, turn_box_on_map=0 in settings.txt makes it give way)"
         fi
     fi
-    if [[ -f "$NAVFLAG_SRC" && $NAVHOOK_ON -eq 1 ]]; then
+    if [[ $WANT_FLAG -eq 1 && $NAVHOOK_ON -eq 1 ]]; then
         if [[ ! -f "$CLUSTER_DIR/komo_dest" ]]; then
             : > "$CLUSTER_DIR/komo_dest" && note "add $CLUSTER_DIR/komo_dest"
         fi
         print "nav flag:          ON (trial; Audi's picture with the flag for the last 200 m before the destination)"
     else
         [[ -f "$CLUSTER_DIR/komo_dest" ]] && rm -f "$CLUSTER_DIR/komo_dest" && print "nav flag:          removed $CLUSTER_DIR/komo_dest" && note "remove $CLUSTER_DIR/komo_dest"
-        if [[ -f "$NAVFLAG_SRC" ]]; then
-            print "nav flag:          ignored (nav_flag.txt needs the navigation hook: nav_box.txt or hud_arrows.txt on Audi software P2711 or P2873)"
+        if [[ $WANT_FLAG -eq 1 ]]; then
+            print "nav flag:          ignored (destination_flag needs the navigation hook: turn_box or hud_navigation on Audi software P2711 or P2873)"
         elif [[ $NAVHOOK_ON -eq 1 ]]; then
-            print "nav flag:          OFF (trial; create Mods/ClusterIntegration/nav_flag.txt for Audi's picture with the flag near the destination)"
+            print "nav flag:          OFF (trial; destination_flag=1 in settings.txt shows Audi's picture with the flag near the destination)"
         fi
     fi
-    if [[ -f "$HUD_SRC" ]]; then
+    if [[ $WANT_HUD -gt 0 ]]; then
         if [[ $NAVHOOK_ON -eq 1 ]]; then
             NAVHUD_BOX=without
             [[ $NAVBOX_ON -eq 1 ]] && NAVHUD_BOX=with

@@ -28,6 +28,7 @@ In testing, not in a release yet:
 - **The phone's next turn in Audi's own box** next to the right dial (arrow, distance, street, arrival time), also in the cockpit tabs that show no map.
 - **Arrow and distance on the head-up display**, and Audi's picture with the flag near the destination.
 - Switches for what the iPhone draws on the cockpit map (its turn card, its arrival line).
+- One settings file on the card in place of the single switch files.
 - A fixed cockpit size for cars where the picture ends too early (Q3 with the Virtual Cockpit Plus).
 
 ## Tested vehicles
@@ -70,7 +71,7 @@ To update, unzip the new version over the same card and insert it again.
 
 ## Options
 
-Empty files in `Mods/ClusterIntegration/` on the card switch parts on and off. The ones most people need:
+Files in `Mods/ClusterIntegration/` on the card switch parts on and off. The ones most people need:
 
 | File on the card | What it does |
 |---|---|
@@ -78,7 +79,9 @@ Empty files in `Mods/ClusterIntegration/` on the card switch parts on and off. T
 | `altscreen_conf.txt` | Settings for the CarPlay map: picture areas per cockpit layout, zoom, what the iPhone draws. |
 | `uninstall.txt` | Removes the mod and restores the backups. |
 
-All files and settings, including the ones in testing: [docs/options.md](docs/options.md).
+In testing, for the next release: one file `settings.txt` for all of it (`carplay_map=1`, `turn_box=1`, `hud_navigation=1`, the map's settings), with every value explained in `settings.example.txt`. The single files keep working.
+
+All settings and files, including the ones in testing: [docs/options.md](docs/options.md).
 
 ## Remove
 

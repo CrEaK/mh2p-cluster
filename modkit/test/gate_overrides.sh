@@ -117,13 +117,13 @@ printf 'ports=6200,7100\nports=six thousand\n' > "$ACS"; out=$(mksh "$MOD_PATH/i
 printf '# back to the defaults\n' > "$ACS"; mksh "$MOD_PATH/install.sh" >/dev/null 2>&1; [[ ! -f $ACF ]] || res "altscreen conf: clean-up after the eta test" FAIL
 rm -f "$ACS"
 touch "$SCR/fakesd/Mods/ClusterIntegration/enable_carplay.txt"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
-echo "$out" | grep -q 'enable_carplay_altscreen.txt needs the Audi JAR' && [[ ! -f $AC/altscreen.so ]] && res "altscreen: ignored and removed with enable_carplay.txt" PASS || res "altscreen: ignored with enable_carplay.txt" FAIL
+echo "$out" | grep -q 'enable_carplay_altscreen.txt) needs the Audi JAR' && [[ ! -f $AC/altscreen.so ]] && res "altscreen: ignored and removed with enable_carplay.txt" PASS || res "altscreen: ignored with enable_carplay.txt" FAIL
 rm -f "$SCR/fakesd/Mods/ClusterIntegration/enable_carplay.txt"; mksh "$MOD_PATH/install.sh" >/dev/null 2>&1
 rm -f "$SCR/fakesd/Mods/ClusterIntegration/enable_carplay_altscreen.txt"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
 python3 -c "import json;c=json.load(open('$CFG'))['config'];print(('PASS' if c['mirror']['mode']=='fill' else 'FAIL')+' altscreen off: shipped mirror.mode back')"
 [[ ! -f $AC/altscreen.so && ! -f $AC/altscreen_pf.sh && ! -f /mnt/app/eso/bin/apps/dio_manager.real ]] && echo "$out" | grep -q 'remove altscreen:' && res "altscreen off: files removed, stock dio_manager back" PASS || res "altscreen off: files removed" FAIL
 touch "$SCR/fakesd/Mods/ClusterIntegration/carplay_turns.txt"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
-echo "$out" | grep -q 'carplay turns:     ignored (carplay_turns.txt needs enable_carplay_altscreen.txt)' && [[ ! -f $AC/carplay_turns ]] && res "carplay turns: ignored without the map hook" PASS || res "carplay turns: ignored without the map hook" FAIL
+echo "$out" | grep -q 'carplay turns:     ignored (carplay_turns needs the CarPlay map' && [[ ! -f $AC/carplay_turns ]] && res "carplay turns: ignored without the map hook" PASS || res "carplay turns: ignored without the map hook" FAIL
 touch "$SCR/fakesd/Mods/ClusterIntegration/enable_carplay_altscreen.txt"; mksh "$MOD_PATH/install.sh" >/dev/null 2>&1; rm -f "$MOD_PATH/Backup/manifest.txt"; mksh "$MOD_PATH/uninstall.sh" >/dev/null 2>&1
 [[ ! -f $AC/carplay_turns ]] && res "carplay turns: uninstall removes the marker without a manifest" PASS || res "carplay turns: uninstall removes the marker" FAIL
 rm -f "$SCR/fakesd/Mods/ClusterIntegration/carplay_turns.txt" "$SCR/fakesd/Mods/ClusterIntegration/enable_carplay_altscreen.txt"; setup MH2p_ER_AUG35_P2711 1 1

@@ -1,61 +1,89 @@
-# Options: files on the card and settings
+# Options: settings and files on the card
 
-Everything is switched with files in `Mods/ClusterIntegration/` on the card, next to the folder `Update`. Most are empty files whose name is the switch. Change the files, insert the card again, and the installer applies the difference: a file that is gone takes its part out again.
+Everything is set on the card, in `Mods/ClusterIntegration/` next to the folder `Update`. Change something, insert the card again, and the installer applies the difference.
 
-"Since" says where a file first works: a release, or "after beta 4" for what is in this repository and in test packages but in no release yet.
+"Since" says where something first works: a release, or "after beta 4" for what is in this repository and in test packages but in no release yet.
 
-## Switches
+## `settings.txt`: one file for everything (after beta 4)
 
-| File | What it does | Since |
+Copy `settings.example.txt` to `settings.txt`, remove the `#` in front of a line, set the value. The example file explains every value. One `key=value` per line, `#` starts a comment.
+
+- A line in `settings.txt` decides. For anything it does not name, the mod does what it did before: its default, or what one of the single files below says. A card set up for an earlier version keeps working.
+- An update does not overwrite your `settings.txt`.
+- The installer's log lists what it read and names every line it could not use.
+
+### What is shown
+
+| Key | Values | What it does |
 |---|---|---|
-| `enable_carplay_altscreen.txt` | CarPlay map in the cockpit (the iPhone's instrument-cluster video). In the package by default. | beta 1 |
-| `uninstall.txt` | Runs the uninstaller instead: restores every file from `Update/Backup` on the card. | upstream |
-| `nav_box.txt` | Trial, P2711 and P2873: the phone's next turn in Audi's own cockpit box. Installs a hook in the navigation process. With CarPlay it needs `carplay_turns.txt`. | after beta 4 |
-| `nav_box_tabs.txt` | Trial, with `nav_box.txt`: the box makes way while the cockpit shows the phone's map (CarPlay or Android Auto) and is there in the other tabs. | after beta 4 |
-| `hud_arrows.txt` | Trial: the phone's next turn on the head-up display. On P2711 and P2873 with arrow and distance (same hook as the box), elsewhere the street name only. A `2` as the first character adds side streets. | after beta 4 |
-| `nav_flag.txt` | Trial, with `nav_box.txt` or `hud_arrows.txt` on P2711 and P2873: Audi's picture with the flag for the last 200 m. | after beta 4 |
-| `carplay_turns.txt` | Trial, with `enable_carplay_altscreen.txt`: loads the turn-by-turn hook next to the map hook, so CarPlay's turn data reaches the box and the head-up display. | after beta 4 |
-| `cockpit_size.txt` | One line `WIDTHxHEIGHT`, for example `1920x722`, for cars where the picture ends too early (Q3 with the Virtual Cockpit Plus). | after beta 4 |
-| `daemon_log.txt` | The cluster daemon writes a detailed log (`cluster_daemon.log`). | upstream fork |
-| `diag.txt` | Diagnostic mode: the hooks only log, nothing is added to the phone connection. | upstream |
-| `force_install.txt` | Skips the check of brand and software version. | upstream |
-| `no_stub.txt` | Audi: do not install the stand-in for a class only Porsche units have. | upstream fork |
-| `enable_carplay.txt`, `enable_carplay_hook.txt` | The original project's CarPlay turn hook on Audi, without the map. `enable_carplay.txt` is known not to work on Audi. | upstream fork |
+| `carplay_map` | `1` on, `0` off | CarPlay map in the cockpit (the iPhone's instrument-cluster video). On in the package. |
+| `turn_box` | `1` on, `0` off | Trial, P2711 and P2873: the phone's next turn in Audi's own cockpit box. Installs a hook in the navigation process. |
+| `turn_box_on_map` | `0`, `1` | With `turn_box`: `0` = the box makes way while the cockpit shows the phone's map (CarPlay or Android Auto) and is there in the other tabs, `1` = the box in every tab. |
+| `hud_navigation` | `0`, `1`, `2` | Trial: the phone's next turn on the head-up display. On P2711 and P2873 with arrow and distance (same hook as the box), elsewhere the street name only. `2` also hands on the other roads of the junction, which Audi draws as short stubs around the arrow (untested on a car). |
+| `destination_flag` | `1` on, `0` off | Trial, with `turn_box` or `hud_navigation` on P2711 and P2873: Audi's picture with the flag for the last 200 m. |
+| `carplay_turns` | `1`, `0` | CarPlay's turn data for the box and the head-up display. Comes by itself with `turn_box` or `hud_navigation`; the key only overrules that. |
+| `cockpit_size` | `1920x722`, `auto` | A fixed size for cars where the picture ends too early (Q3 with the Virtual Cockpit Plus). |
+| `daemon_log` | `1` on, `0` off | The cluster daemon writes a detailed log (`cluster_daemon.log`). |
 
-Hook files and switches on P2711 and P2873 only: the hook in the navigation process is written for the two builds of the navigation program it knows. On any other build the installer says so and changes nothing there.
+The hook in the navigation process is written for the two builds of the navigation program it knows (P2711, P2873). On any other build the installer says so and changes nothing there.
 
-## Settings files
-
-| File | For | Template in the package |
-|---|---|---|
-| `altscreen_conf.txt` | The CarPlay map | `altscreen_conf.example.txt` |
-| `config_overrides.txt` | Android Auto map and turn-by-turn (`cluster_config.json`) | `config_overrides.example.txt` |
-| `gal_env.txt` | The Android Auto hook's environment | `gal_env.example.txt` |
-
-Each is plain `key=value`, one per line, `#` starts a comment. Your own files on the card win over the package's defaults and survive an update. An `altscreen_conf.txt` without any setting removes the installed settings again.
-
-### `altscreen_conf.txt` (CarPlay map)
+### The CarPlay map
 
 The iPhone reads these when it connects, so after the card ran, reconnecting is enough.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `large` | `500,155,940,410` | Picture area in the large-map view: left, top, width, height in the 1920x720 picture. The iPhone keeps its cards inside. |
-| `small` | `624,158,672,400` | The same for the view with the large gauges. |
-| `sport_large`, `sport_small` | `500,155,940,380`, `54,155,480,370` | The same for cockpits with the dial in the centre (Sport, Performance, e-tron). |
-| `phys` | `384,144` | Size of the picture in mm as told to the iPhone. Larger numbers make its cards and texts smaller. |
+| `map_turn_card`, `map_arrival_line` | `1`, `1` | The iPhone's turn card and arrival line on the cockpit map. `0` leaves the map alone, useful with `turn_box`. |
+| `map_speed_limit` | `1` | Ask the iPhone for its speed limit sign. |
+| `map_area_large` | `500,155,940,410` | Picture area in the large-map view: left, top, width, height in the 1920x720 picture. The iPhone keeps its cards inside. |
+| `map_area_small` | `624,158,672,400` | The same for the view with the large gauges. |
+| `map_area_sport_large`, `map_area_sport_small` | `500,155,940,380`, `54,155,480,370` | The same for cockpits with the dial in the centre (Sport, Performance, e-tron). |
+| `map_size_mm` | `384,144` | Size of the picture in mm as told to the iPhone. Larger numbers make its cards and texts smaller. |
+| `map_ports` | `6100,6200,7100` | Ports the iPhone may send the cockpit video to, tried in this order; Audi's firewall passes them anyway. When none is free the mod uses 6031, which it has to open itself. `0` goes straight to 6031. |
+| `map_keyframe_ms` | `3000` | How often a full picture is requested; a damaged picture heals within that time. |
 | `zoom_invert` | `1` | Direction of the steering-wheel roller. |
 | `zoom_restore`, `zoom_max` | `1`, `10` | Remember the zoom across restarts, and the largest step count kept. |
 | `zoom_per_view` | `1` | One zoom per cockpit view, or one for both (`0`). |
-| `zoom_step_ms` | `600` | Pause between two zoom steps after a view change, 50 to 2000. After beta 4. |
-| `speedlimit` | `1` | Ask the iPhone for its speed limit sign. |
-| `eta`, `turncard` | `1`, `1` | The iPhone's arrival line and turn card on the cockpit map. `0` leaves the map alone, useful with `nav_box.txt`. After beta 4. |
-| `keyframe_ms` | `3000` | How often a full picture is requested; a damaged picture heals within that time. |
-| `ports` | `6100,6200,7100` | Ports the iPhone may send the cockpit video to, tried in this order; Audi's firewall passes them anyway. When none is free the mod uses 6031, which it has to open itself. `0` goes straight to 6031. After beta 4. |
+| `zoom_step_ms` | `600` | Pause between two zoom steps after a view change, 50 to 2000. |
 
 Fitting the picture: a card or the arrival line hidden at the bottom, lower the last number in steps of 20. Cut off on the left, raise the first number. Cut off on the right, lower the third.
 
-### `config_overrides.txt` and `gal_env.txt` (Android Auto)
+## Files that start an action
+
+These stay files of their own; they are no setting.
+
+| File | What it does | Since |
+|---|---|---|
+| `uninstall.txt` | Runs the uninstaller instead: restores every file from `Update/Backup` on the card. | upstream |
+| `diag.txt` | Diagnostic mode: the hooks only log, nothing is added to the phone connection, so no map shows. | upstream |
+| `force_install.txt` | Skips the check of brand and software version. | upstream |
+| `no_stub.txt` | Audi: do not install the stand-in for a class only Porsche units have. | upstream fork |
+| `enable_carplay.txt`, `enable_carplay_hook.txt` | The original project's CarPlay turn hook on Audi, without the map. `enable_carplay.txt` is known not to work on Audi. | upstream fork |
+
+## The single files from before
+
+They keep working wherever `settings.txt` does not name the same thing. Most are empty files whose name is the switch; a file that is gone takes its part out again.
+
+| File | Same as | Since |
+|---|---|---|
+| `enable_carplay_altscreen.txt` (in the package) | `carplay_map=1` | beta 1 |
+| `altscreen_conf.txt` (template `altscreen_conf.example.txt`) | the `map_` and `zoom_` keys, under the hook's own names (`large`, `small`, `sport_large`, `sport_small`, `phys`, `turncard`, `eta`, `speedlimit`, `ports`, `keyframe_ms`, `zoom_...`). A file without any setting removes the installed settings. | beta 2 |
+| `nav_box.txt` | `turn_box=1` | after beta 4 |
+| `nav_box_tabs.txt` | `turn_box_on_map=0` | after beta 4 |
+| `hud_arrows.txt` (a `2` as the first character: with the junction's other roads) | `hud_navigation=1` or `2` | after beta 4 |
+| `nav_flag.txt` | `destination_flag=1` | after beta 4 |
+| `carplay_turns.txt` | `carplay_turns=1` | after beta 4 |
+| `cockpit_size.txt` (one line `WIDTHxHEIGHT`) | `cockpit_size=` | after beta 4 |
+| `daemon_log.txt` | `daemon_log=1` | upstream fork |
+
+## Android Auto: `config_overrides.txt` and `gal_env.txt`
+
+Two files of the original project with their own formats, not part of `settings.txt`.
+
+| File | For | Template in the package |
+|---|---|---|
+| `config_overrides.txt` | Android Auto map and turn-by-turn (`cluster_config.json`) | `config_overrides.example.txt` |
+| `gal_env.txt` | The Android Auto hook's environment | `gal_env.example.txt` |
 
 The package sets what the Audi cockpit needs (`gal_h264.codecRes=1080`, `gal_h264.mode="fill"`, `gal_h264.panY=0`, `GAL_CLUSTER_RES=1080`). The example files explain the rest; the reasons are in [audi-notes.md](audi-notes.md#fitting-the-map-to-the-e-trons-cockpit) and the keys of the turn-by-turn bridge in [porsche.md](porsche.md#configuration).
 
