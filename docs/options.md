@@ -11,7 +11,7 @@ Everything is switched with files in `Mods/ClusterIntegration/` on the card, nex
 | `enable_carplay_altscreen.txt` | CarPlay map in the cockpit (the iPhone's instrument-cluster video). In the package by default. | beta 1 |
 | `uninstall.txt` | Runs the uninstaller instead: restores every file from `Update/Backup` on the card. | upstream |
 | `nav_box.txt` | Trial, P2711 and P2873: the phone's next turn in Audi's own cockpit box. Installs a hook in the navigation process. With CarPlay it needs `carplay_turns.txt`. | after beta 4 |
-| `nav_box_tabs.txt` | Trial, with `nav_box.txt`: the box makes way while the cockpit shows the phone's map and is there in the other tabs. With Android Auto the box stays. | after beta 4 |
+| `nav_box_tabs.txt` | Trial, with `nav_box.txt`: the box makes way while the cockpit shows the phone's map (CarPlay or Android Auto) and is there in the other tabs. | after beta 4 |
 | `hud_arrows.txt` | Trial: the phone's next turn on the head-up display. On P2711 and P2873 with arrow and distance (same hook as the box), elsewhere the street name only. A `2` as the first character adds side streets. | after beta 4 |
 | `nav_flag.txt` | Trial, with `nav_box.txt` or `hud_arrows.txt` on P2711 and P2873: Audi's picture with the flag for the last 200 m. | after beta 4 |
 | `carplay_turns.txt` | Trial, with `enable_carplay_altscreen.txt`: loads the turn-by-turn hook next to the map hook, so CarPlay's turn data reaches the box and the head-up display. | after beta 4 |
@@ -51,6 +51,7 @@ The iPhone reads these when it connects, so after the card ran, reconnecting is 
 | `speedlimit` | `1` | Ask the iPhone for its speed limit sign. |
 | `eta`, `turncard` | `1`, `1` | The iPhone's arrival line and turn card on the cockpit map. `0` leaves the map alone, useful with `nav_box.txt`. After beta 4. |
 | `keyframe_ms` | `3000` | How often a full picture is requested; a damaged picture heals within that time. |
+| `ports` | `6100,6200,7100` | Ports the iPhone may send the cockpit video to, tried in this order; Audi's firewall passes them anyway. When none is free the mod uses 6031, which it has to open itself. `0` goes straight to 6031. After beta 4. |
 
 Fitting the picture: a card or the arrival line hidden at the bottom, lower the last number in steps of 20. Cut off on the left, raise the first number. Cut off on the right, lower the third.
 

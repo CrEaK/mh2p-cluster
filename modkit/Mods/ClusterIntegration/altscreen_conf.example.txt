@@ -53,6 +53,12 @@
 #eta=1
 #turncard=1
 #
+# Ports the iPhone may send the cockpit video to, tried in this order. Audi's
+# firewall passes these three anyway. When none of them is free the mod uses
+# 6031, which it has to open itself at every start; ports=0 goes straight to
+# 6031 (as before beta 5).
+#ports=6100,6200,7100
+#
 # A full picture (keyframe) is requested this often, in milliseconds
 # (1000..60000). A damaged picture heals within that time.
 #keyframe_ms=3000

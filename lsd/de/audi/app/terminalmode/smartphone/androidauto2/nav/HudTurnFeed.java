@@ -103,7 +103,12 @@
  * BAP indication setMapVisibility did not come, and the view size showed only in the handler's "big stage".
  * The cockpit kept the box in every tab. With the switch cluster/komo_tab (trial) the box is taken away while
  * the cockpit shows the map and that map is the phone's (/tmp/altscreen_video), and comes back in the other
- * tabs. Not seen on a car yet.
+ * tabs. Seen on an A6 with CarPlay on 2026-11-28.
+ *
+ * Android Auto (komo14). The box, the flag and the end of a route ran with Android Auto on an A6 on
+ * 2026-11-28 as they are. Two things did not fit: the arrival line (Android Auto has none, see tap()) and
+ * komo_tab, which knew the phone's map by CarPlay's file only; KombiMapGuard now says when Android Auto's map
+ * has the cockpit (aaMap()). Not seen on a car yet.
  *
  * One wish per view (komo10). The hook (navhook6) tells the head-up display's view from the cockpit's by its
  * style variant and reads two bytes from the follow flag file, the cockpit's and the head-up display's. The
@@ -169,7 +174,7 @@ public final class HudTurnFeed implements InvocationHandler, Runnable {
     private static final String SHOW_MARKER = "/mnt/app/eso/bin/apps/cluster/komo_show";
     private static final String FOLLOW_FLAG = "/tmp/komo_follow";
     private static final String HOOK_SWITCH = "/mnt/app/eso/bin/apps/cluster/komo_hook";
-    private static final String BUILD = "komo13";
+    private static final String BUILD = "komo14";
     /* the dio_manager hook keeps this file from a CarPlay session's start to its end (altscreen.so "ui2" and later) */
     private static final String PHONE_SESSION = "/tmp/altscreen_session";
     private static boolean sessionSeen, sessionEver, videoSeen;
@@ -201,6 +206,8 @@ public final class HudTurnFeed implements InvocationHandler, Runnable {
     private static int cockpitLines;
     /** The cockpit shows the map in its centre (the navigation's map context, see mapContext(); true until told otherwise). */
     public static volatile boolean mapShown = true;
+    /* Android Auto's map is what the cockpit's map area shows (KombiMapGuard) */
+    private static volatile boolean aaMapShown;
     /* whether the next tick() sends to the cockpit's view as well */
     private static boolean tickBox = true;
     /* the navigation's own data: a line when it changes in kind, distance steps at most this often */
@@ -389,6 +396,15 @@ public final class HudTurnFeed implements InvocationHandler, Runnable {
                 distValue = value;
                 distUnit = unit;
                 bargraphOn = bar;
+            } else if (("updateTimeToDestination".equals(name) || "updateDistanceToDestination".equals(name))
+                    && a.length == 3 && "AndroidAuto".equals(this.source)) {
+                /*
+                 * Android Auto has no arrival: its integration hands on the distance to the next turn as
+                 * "distance to the destination" and that distance / 13 m/s as the time. In the box that was
+                 * "arrival now, 20 m" next to Google's own "18 min, 15 km" (A6, 2026-11-28). Not taken; the
+                 * box's upper half then shows the flag without a time.
+                 */
+                return;
             } else if ("updateTimeToDestination".equals(name) && a.length == 3) {
                 long sec = ((Long) a[2]).longValue();
                 changed = sec != destSec;
@@ -723,9 +739,31 @@ public final class HudTurnFeed implements InvocationHandler, Runnable {
 
     private static boolean tabHides() {
         try {
-            return mapShown && new File(TAB_SWITCH).exists() && new File(PHONE_MAP).exists();
+            return mapShown && new File(TAB_SWITCH).exists() && (aaMapShown || new File(PHONE_MAP).exists());
         } catch (Throwable t) {
             return false;
+        }
+    }
+
+    /**
+     * Android Auto's map took the cockpit or gave it back (KombiMapGuard: its video runs and the Smartphone
+     * Map checkbox is on). Google's map draws its own turn card like CarPlay's, so komo_tab takes the box away
+     * there as well (A6, 2026-11-28: the box stayed next to it). No LOCK, never throws.
+     */
+    public static void aaMap(boolean shown) {
+        try {
+            if (aaMapShown == shown) {
+                return;
+            }
+            aaMapShown = shown;
+            if (readLevel() > 0 || komoOn() || showOn()) {
+                log("cockpit: Android Auto's map " + (shown ? "is in the cockpit" : "left the cockpit"));
+            }
+            synchronized (WAKE) {
+                woken = true;
+                WAKE.notifyAll();
+            }
+        } catch (Throwable t) {
         }
     }
 

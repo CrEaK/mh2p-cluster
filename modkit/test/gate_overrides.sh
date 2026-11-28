@@ -112,6 +112,8 @@ printf '# back to the defaults\n' > "$ACS"; out=$(mksh "$MOD_PATH/install.sh" 2>
 out=$(mksh "$MOD_PATH/install.sh" 2>&1); echo "$out" | grep -q 'has no setting, the hook uses its defaults' && [[ ! -f $ACF ]] && res "altscreen conf: nothing to remove, defaults reported" PASS || res "altscreen conf: nothing to remove" FAIL
 printf 'eta=0\nturncard=0  # the box in the cockpit shows it\nspeedlimit=1\neta=yes\n' > "$ACS"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
 [[ "$(cat $ACF)" == $'eta=0\nturncard=0\nspeedlimit=1' ]] && echo "$out" | grep -q 'altscreen conf:    WARN' && res "altscreen conf: eta and turncard are known keys, a word as value is not" PASS || { res "altscreen conf: eta and turncard" FAIL; cat $ACF; }
+printf 'ports=6200,7100\nports=six thousand\n' > "$ACS"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
+[[ "$(cat $ACF)" == 'ports=6200,7100' ]] && echo "$out" | grep -q 'altscreen conf:    WARN' && res "altscreen conf: ports is a known key, numbers only" PASS || { res "altscreen conf: ports" FAIL; cat $ACF; }
 printf '# back to the defaults\n' > "$ACS"; mksh "$MOD_PATH/install.sh" >/dev/null 2>&1; [[ ! -f $ACF ]] || res "altscreen conf: clean-up after the eta test" FAIL
 rm -f "$ACS"
 touch "$SCR/fakesd/Mods/ClusterIntegration/enable_carplay.txt"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)

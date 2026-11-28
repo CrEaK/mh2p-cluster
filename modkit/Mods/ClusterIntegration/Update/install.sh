@@ -842,7 +842,7 @@ if [[ $ALTSCREEN -eq 1 ]]; then
     rm -f "$ALT_CONF_STAGE"
     if [[ -f "$ALT_CONF_SRC" ]]; then
         awk '{ sub(/\r$/, ""); sub(/[ \t]*#.*$/, ""); gsub(/^[ \t]+|[ \t]+$/, "") }
-             /^(phys|large|small|sport_large|sport_small|zoom_invert|zoom_restore|zoom_per_view|zoom_max|zoom_step_ms|speedlimit|eta|turncard|keyframe_ms)=[0-9]+(,[0-9]+)*$/ { print; next }
+             /^(phys|large|small|sport_large|sport_small|zoom_invert|zoom_restore|zoom_per_view|zoom_max|zoom_step_ms|speedlimit|eta|turncard|ports|keyframe_ms)=[0-9]+(,[0-9]+)*$/ { print; next }
              /./ { bad++ }
              END { exit (bad > 0 ? 1 : 0) }' "$ALT_CONF_SRC" > "$ALT_CONF_STAGE" 2>/dev/null
         [[ $? -ne 0 ]] && print "altscreen conf:    WARN altscreen_conf.txt has lines that are not key=numbers with a known key; they are ignored"

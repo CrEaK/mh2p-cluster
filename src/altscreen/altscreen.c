@@ -92,6 +92,7 @@
 #define OFF_PAIRING   996
 #define ALT_TYPE      111
 #define ALT_PORT      (-6031)          /* negative = preferred port, any if taken */
+#define MAX_PORTS     4
 #define RCVBUF        (-180224)        /* same as stock type 110 */
 
 /* Audi A6 C8 virtual cockpit: 12.3", 1920x720 (the cluster daemon finds the
@@ -605,6 +606,7 @@ static struct {
     int speedlimit;
     int eta, turncard;                  /* the phone draws its arrival line / its turn card on the map */
     int keyframe_ms;
+    int ports[MAX_PORTS], n_ports;      /* ports Audi's filter passes anyway, tried before 6031 */
     char url[160];                      /* showUI URL for experiments; empty = CL_URL */
 } g_conf;
 
@@ -677,6 +679,17 @@ static void load_conf(void) {
     g_conf.eta = 1;
     g_conf.turncard = 1;
     g_conf.keyframe_ms = 3000;          /* a broken picture heals within this time */
+    /* Audi's packet filter passes these TCP ports on the hotspot interfaces as
+     * it comes (pfctl -sr on an A6 C8, P2711, 2026-11-28: 7300, 6030,
+     * 5000-5001, 5010, 6000-6001, 6100, 6200, 7000-7001, 7100, 8080,
+     * 50421-50423, all in the queue of 6030). libairplay asks for 5001, 5020,
+     * 6000, 6011, 6020, 6030, 7000, 7070 and 7071 only, and with the unit idle
+     * nothing listens on the three below. A stream on one of them needs no rule
+     * of ours: not the watcher that copies the 6030 rule for 6031, which lost
+     * the race against the system's own reload when the hotspot came up (the
+     * port was shut for nine seconds, the iPhone tried once and gave up), and
+     * not root, which a unit without the ModKit's boot part cannot give it. */
+    g_conf.ports[0] = 6100; g_conf.ports[1] = 6200; g_conf.ports[2] = 7100; g_conf.n_ports = 3;
     g_conf.url[0] = 0;
     /* SPORT / SPORT_RS ("Performance" view, S and RS): the status bar is higher
      * in the large view (410 hid the arrival line on an A6, 360 left a gap),
@@ -706,6 +719,14 @@ static void load_conf(void) {
             else if (!strcmp(line, "eta")) g_conf.eta = atoi(eq + 1) ? 1 : 0;
             else if (!strcmp(line, "turncard")) g_conf.turncard = atoi(eq + 1) ? 1 : 0;
             else if (!strcmp(line, "keyframe_ms")) g_conf.keyframe_ms = atoi(eq + 1);
+            else if (!strcmp(line, "ports")) {
+                /* ports=6100,6200 picks them; ports=0 goes straight to 6031 as before */
+                int v[MAX_PORTS] = { 0, 0, 0, 0 }, i;
+                parse_ints(eq + 1, v, MAX_PORTS);
+                g_conf.n_ports = 0;
+                for (i = 0; i < MAX_PORTS; i++)
+                    if (v[i] >= 1024 && v[i] <= 65535) g_conf.ports[g_conf.n_ports++] = v[i];
+            }
             else if (!strcmp(line, "url")) {
                 snprintf(g_conf.url, sizeof(g_conf.url), "%s", eq + 1);
                 chomp(g_conf.url);
@@ -980,7 +1001,7 @@ static unsigned long g_ring_keyed, g_ring_wraps;    /* per stream, receive threa
 static long g_ring_t0;                  /* ms: start of this lap */
 static unsigned long g_ring_units;      /* units written in this lap */
 /* For the session log, which reaches the SD card (testers have no shell): */
-#define HOOK_BUILD    "2026-11-28 ui2"
+#define HOOK_BUILD    "2026-11-28 port1"
 static unsigned long g_ring_dropped;    /* units too large for the ring */
 static volatile int g_ring_head_key;    /* offset 0 holds a keyframe unit or a stream start */
 static long g_zone_t, g_zone_max;       /* ms: keyframe asked in RING_ZONE, longest wait for it */
@@ -1915,7 +1936,7 @@ static int alt_setup(void *session, void *desc, void *resp) {
     pthread_t t;
     pthread_attr_t at;
     void *rdesc, *streams, *pair;
-    int err = 0, port = 0, sock = -1, family;
+    int err = 0, port = 0, sock = -1, family, open_port = 0;
     int64_t conn = get_int(desc, "streamConnectionID", &err);
 
     if (err || !conn) {
@@ -1940,7 +1961,25 @@ static int alt_setup(void *session, void *desc, void *resp) {
         plog("111: no pairing session, AES key derived");
     }
     family = *((const uint8_t *)session + OFF_FAMILY);
-    err = ap.sock_open(family, 1, 6, ALT_PORT, &port, RCVBUF, &sock);
+    /* First a port the filter passes anyway. ServerSocketOpen takes any port
+     * when the wanted one is taken, so a socket on another port is closed and
+     * the next one tried; 6031 with the watcher's rule is the last resort. */
+    {
+        int i;
+        err = -1;
+        for (i = 0; i < g_conf.n_ports; i++) {
+            port = 0; sock = -1;
+            err = ap.sock_open(family, 1, 6, -g_conf.ports[i], &port, RCVBUF, &sock);
+            if (!err && sock >= 0 && port == g_conf.ports[i]) { open_port = 1; break; }
+            plog("111: port %d not to be had (err %d, got port %d)", g_conf.ports[i], err, port);
+            if (sock >= 0) close(sock);
+            sock = -1; err = -1;
+        }
+        if (!open_port) {
+            port = 0;
+            err = ap.sock_open(family, 1, 6, ALT_PORT, &port, RCVBUF, &sock);
+        }
+    }
     plog("111: connID=%lld family=%d ServerSocketOpen err=%d port=%d sock=%d",
          (long long)conn, family, err, port, sock);
     if (err || sock < 0) { free(rx); return -1; }
@@ -1976,7 +2015,8 @@ static int alt_setup(void *session, void *desc, void *resp) {
     }
     rel(rdesc);
     plog("111: receiver listening on port %d", port);
-    slog("111: SETUP, listening on port %d", port);
+    slog("111: SETUP, listening on port %d (%s)", port,
+         open_port ? "open in Audi's filter as it comes" : "needs the watcher's rule");
     return 0;
 fail:
     rel(rx->session);

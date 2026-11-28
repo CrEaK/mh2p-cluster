@@ -230,6 +230,8 @@ public class KombiMapGuard implements Runnable, ServiceTrackerCustomizer {
             }
             lastAaRendering = aaRendering;
             lastAaWanted = aaWanted;
+            /* the turn feed keeps Audi's box off the map tab while the phone's map is there */
+            HudTurnFeed.aaMap(aaWanted);
         }
         boolean rendering = aaWanted || cpVideo;
         String zoomScale = DisplayManagerMIB2High.refreshZoomScale();
