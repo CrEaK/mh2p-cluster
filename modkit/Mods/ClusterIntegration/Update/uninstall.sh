@@ -160,6 +160,23 @@ backup_and_remove "$CLUSTER_DIR/altscreen_pf.sh"
 [[ -f "$CLUSTER_DIR/altscreen_off" ]] && rm -f "$CLUSTER_DIR/altscreen_off" && print "remove:            $CLUSTER_DIR/altscreen_off" && note "remove $CLUSTER_DIR/altscreen_off"
 [[ -f "$CLUSTER_DIR/diag_mode" ]] && rm -f "$CLUSTER_DIR/diag_mode" && print "remove:            $CLUSTER_DIR/diag_mode" && note "remove $CLUSTER_DIR/diag_mode"
 [[ -f "$CLUSTER_DIR/daemon_verbose" ]] && rm -f "$CLUSTER_DIR/daemon_verbose" && print "remove:            $CLUSTER_DIR/daemon_verbose" && note "remove $CLUSTER_DIR/daemon_verbose"
+[[ -f "$CLUSTER_DIR/daemon_size" ]] && rm -f "$CLUSTER_DIR/daemon_size" && print "remove:            $CLUSTER_DIR/daemon_size" && note "remove $CLUSTER_DIR/daemon_size"
+[[ -f "$CLUSTER_DIR/carplay_turns" ]] && rm -f "$CLUSTER_DIR/carplay_turns" && print "remove:            $CLUSTER_DIR/carplay_turns" && note "remove $CLUSTER_DIR/carplay_turns"
+[[ -f "$CLUSTER_DIR/hud_feed" ]] && rm -f "$CLUSTER_DIR/hud_feed" && print "remove:            $CLUSTER_DIR/hud_feed" && note "remove $CLUSTER_DIR/hud_feed"
+# The navigation hook (nav_box.txt): the dependency comes out of the
+# navigation's libwatchdog.so first, then dog.so goes (navhook/navhook.sh).
+if [[ -f "$MOD_PATH/navhook/navhook.sh" ]]; then
+    . "$MOD_PATH/navhook/navhook.sh"
+    navhook_remove
+elif [[ -f /mnt/app/navigation/dog.so ]]; then
+    print "nav box:           WARN navhook/navhook.sh is missing on the card; /mnt/app/navigation/dog.so and libwatchdog.so are left as they are (the hook does nothing without its switch)"
+fi
+[[ -f "$CLUSTER_DIR/komo_feed" ]] && rm -f "$CLUSTER_DIR/komo_feed" && print "remove:            $CLUSTER_DIR/komo_feed" && note "remove $CLUSTER_DIR/komo_feed"
+[[ -f "$CLUSTER_DIR/komo_show" ]] && rm -f "$CLUSTER_DIR/komo_show" && print "remove:            $CLUSTER_DIR/komo_show" && note "remove $CLUSTER_DIR/komo_show"
+[[ -f "$CLUSTER_DIR/komo_hook" ]] && rm -f "$CLUSTER_DIR/komo_hook" && print "remove:            $CLUSTER_DIR/komo_hook" && note "remove $CLUSTER_DIR/komo_hook"
+[[ -f "$CLUSTER_DIR/komo_tab" ]] && rm -f "$CLUSTER_DIR/komo_tab" && print "remove:            $CLUSTER_DIR/komo_tab" && note "remove $CLUSTER_DIR/komo_tab"
+[[ -f "$CLUSTER_DIR/komo_dest" ]] && rm -f "$CLUSTER_DIR/komo_dest" && print "remove:            $CLUSTER_DIR/komo_dest" && note "remove $CLUSTER_DIR/komo_dest"
+[[ -f "$CLUSTER_DIR/komo_hook.so" ]] && rm -f "$CLUSTER_DIR/komo_hook.so" && print "remove:            $CLUSTER_DIR/komo_hook.so" && note "remove $CLUSTER_DIR/komo_hook.so"
 
 typeset j
 for j in "$JAR_DIR"/ClusterIntegration_* "$JAR_DIR"/AndroidAutoCluster_*; do

@@ -105,7 +105,7 @@
 #define ZOOM_PATH     "/tmp/altscreen_cmd"
 #define CL_UUID       "A6C80111-C1A5-4E20-B0C0-1057E12A0D10"
 #define CL_STREAM     "A6C80111-C1A5-4E20-B0C0-1057E12A0D11"
-#define CL_URL        "maps:/car/instrumentcluster?showETA=yes&maneuverLayout=rightAligned&showSpeedLimit="
+/* The Maps cluster URL is put together in cluster_url(): path and query depend on the configuration. */
 
 #define ENC_UTF8      0x08000100
 
@@ -194,6 +194,22 @@ static void video_flag(int on) {
         if (f) fclose(f);
     } else {
         unlink(VIDEO_FLAG);
+    }
+}
+
+/* Present from a CarPlay session's control SETUP to its full TEARDOWN. The
+ * turn hook next to this one never says that the phone is gone (its state
+ * file keeps the last route), so the Audi JAR's nav/HudTurnFeed takes the
+ * turn box and the head-up arrow back when this file goes away: on an A6 the
+ * box stayed up after CarPlay was switched off in the MMI (2026-11-28). */
+#define SESSION_FLAG  "/tmp/altscreen_session"
+
+static void session_flag(int on) {
+    if (on) {
+        FILE *f = fopen(SESSION_FLAG, "w");
+        if (f) fclose(f);
+    } else {
+        unlink(SESSION_FLAG);
     }
 }
 
@@ -562,7 +578,8 @@ static int add_common(void *d, int night) {
  * zoom_restore=0/1, default 1, zoom_per_view=0/1, default 1, and
  * zoom_max=N, default 10, see ZOOM_SAVE; speedlimit=0/1, default 1: the
  * phone is asked to draw its speed limit sign on the map, showSpeedLimit in
- * the Maps cluster URL).
+ * the Maps cluster URL; eta=0/1 and turncard=0/1, both default 1: its arrival
+ * line and its turn card, see cluster_url()).
  *
  * Safe rectangles from the calibration pattern (cluster capture=test,
  * photographed in both cockpit views, 0.725 photo px per stream px):
@@ -576,16 +593,38 @@ static int add_common(void *d, int night) {
  * in 380..400 px. The default claims 0.2 mm/px (384 x 144 mm, close to
  * luka-dev's 0.203 on MHI2Q), so the same pixels count as more room for the
  * card layout; the UI gets 0.76x smaller. */
+#define ZOOM_STEP_MS_DEFAULT 600       /* follower pace after a view change, until a faster one is proven */
+#define TICK_MS_MIN           50        /* the command thread's tick */
+
 static struct {
     int phys_w, phys_h;
     int area[2][4];                     /* 0 = large map view, 1 = big gauges */
     int sport[2][4];                    /* the same two for a cockpit with the dial in the centre */
     int zoom_invert;
-    int zoom_restore, zoom_per_view, zoom_max;
+    int zoom_restore, zoom_per_view, zoom_max, zoom_step_ms;
     int speedlimit;
+    int eta, turncard;                  /* the phone draws its arrival line / its turn card on the map */
     int keyframe_ms;
     char url[160];                      /* showUI URL for experiments; empty = CL_URL */
 } g_conf;
+
+/* What the phone is asked to draw on the cockpit map (showUI). Tried on an A6
+ * C8 with Apple Maps on 2026-11-28 through SHOWUI_TMP below:
+ *   maps:/car/instrumentcluster ... maneuverLayout=rightAligned   map with the turn card
+ *   maps:/car/instrumentcluster/map ... maneuverLayout=no         the map without the turn card
+ *   showETA=yes / no                                               the arrival line, on both paths
+ * maneuverLayout=no on the first path did not take the turn card away. So
+ * turncard=0 picks the /map path and eta=0 showETA=no (altscreen.conf, both
+ * default 1). url=... in the file still replaces all of it, for experiments. */
+static void cluster_url(char *out, size_t n) {
+    if (g_conf.url[0]) {
+        snprintf(out, n, "%s", g_conf.url);
+        return;
+    }
+    snprintf(out, n, "maps:/car/instrumentcluster%s?showETA=%s&maneuverLayout=%s&showSpeedLimit=%s",
+             g_conf.turncard ? "" : "/map", g_conf.eta ? "yes" : "no",
+             g_conf.turncard ? "rightAligned" : "no", g_conf.speedlimit ? "yes" : "no");
+}
 
 /* Experiments without a reconnect: a URL written to this file is sent as
  * showUI on the running stream, once per change of the file (dio_manager may
@@ -632,8 +671,11 @@ static void load_conf(void) {
     g_conf.zoom_invert = 1;             /* A6 C8: positive roller steps zoom out */
     g_conf.zoom_restore = 1;
     g_conf.zoom_per_view = 1;
+    g_conf.zoom_step_ms = ZOOM_STEP_MS_DEFAULT;
     g_conf.zoom_max = 10;
     g_conf.speedlimit = 1;              /* iOS parses it; no sign seen on the A6 test car yet */
+    g_conf.eta = 1;
+    g_conf.turncard = 1;
     g_conf.keyframe_ms = 3000;          /* a broken picture heals within this time */
     g_conf.url[0] = 0;
     /* SPORT / SPORT_RS ("Performance" view, S and RS): the status bar is higher
@@ -658,8 +700,11 @@ static void load_conf(void) {
             else if (!strcmp(line, "zoom_invert")) g_conf.zoom_invert = atoi(eq + 1);
             else if (!strcmp(line, "zoom_restore")) g_conf.zoom_restore = atoi(eq + 1);
             else if (!strcmp(line, "zoom_per_view")) g_conf.zoom_per_view = atoi(eq + 1);
+            else if (!strcmp(line, "zoom_step_ms")) g_conf.zoom_step_ms = atoi(eq + 1);
             else if (!strcmp(line, "zoom_max")) g_conf.zoom_max = atoi(eq + 1);
             else if (!strcmp(line, "speedlimit")) g_conf.speedlimit = atoi(eq + 1) ? 1 : 0;
+            else if (!strcmp(line, "eta")) g_conf.eta = atoi(eq + 1) ? 1 : 0;
+            else if (!strcmp(line, "turncard")) g_conf.turncard = atoi(eq + 1) ? 1 : 0;
             else if (!strcmp(line, "keyframe_ms")) g_conf.keyframe_ms = atoi(eq + 1);
             else if (!strcmp(line, "url")) {
                 snprintf(g_conf.url, sizeof(g_conf.url), "%s", eq + 1);
@@ -670,6 +715,8 @@ static void load_conf(void) {
     }
     if (g_conf.zoom_max < 1) g_conf.zoom_max = 1;
     if (g_conf.zoom_max > 30) g_conf.zoom_max = 30;
+    if (g_conf.zoom_step_ms < TICK_MS_MIN) g_conf.zoom_step_ms = TICK_MS_MIN;
+    if (g_conf.zoom_step_ms > 2000) g_conf.zoom_step_ms = 2000;
     if (g_conf.keyframe_ms < 1000) g_conf.keyframe_ms = 1000;
     if (g_conf.keyframe_ms > 60000) g_conf.keyframe_ms = 60000;
     /* Both pairs of view areas are declared to the iPhone (see build_cluster),
@@ -697,14 +744,15 @@ static void load_conf(void) {
     }
     plog("conf: phys %dx%d mm, large %d,%d %dx%d, small %d,%d %dx%d, sport large %d,%d %dx%d, "
          "sport small %d,%d %dx%d, zoom_invert %d, "
-         "zoom_restore %d, zoom_per_view %d, zoom_max %d, speedlimit %d, keyframe_ms %d%s%s%s",
+         "zoom_restore %d, zoom_per_view %d, zoom_max %d, zoom_step_ms %d, speedlimit %d, eta %d, turncard %d, "
+         "keyframe_ms %d%s%s%s",
          g_conf.phys_w, g_conf.phys_h, g_conf.area[0][0], g_conf.area[0][1], g_conf.area[0][2],
          g_conf.area[0][3], g_conf.area[1][0], g_conf.area[1][1], g_conf.area[1][2],
          g_conf.area[1][3], g_conf.sport[0][0], g_conf.sport[0][1], g_conf.sport[0][2],
          g_conf.sport[0][3], g_conf.sport[1][0], g_conf.sport[1][1], g_conf.sport[1][2],
          g_conf.sport[1][3], g_conf.zoom_invert, g_conf.zoom_restore, g_conf.zoom_per_view,
-         g_conf.zoom_max,
-         g_conf.speedlimit, g_conf.keyframe_ms, g_conf.url[0] ? ", url " : "", g_conf.url,
+         g_conf.zoom_max, g_conf.zoom_step_ms,
+         g_conf.speedlimit, g_conf.eta, g_conf.turncard, g_conf.keyframe_ms, g_conf.url[0] ? ", url " : "", g_conf.url,
          f ? "" : " (defaults)");
 }
 
@@ -932,7 +980,7 @@ static unsigned long g_ring_keyed, g_ring_wraps;    /* per stream, receive threa
 static long g_ring_t0;                  /* ms: start of this lap */
 static unsigned long g_ring_units;      /* units written in this lap */
 /* For the session log, which reaches the SD card (testers have no shell): */
-#define HOOK_BUILD    "2026-11-21 zoom1"
+#define HOOK_BUILD    "2026-11-28 ui2"
 static unsigned long g_ring_dropped;    /* units too large for the ring */
 static volatile int g_ring_head_key;    /* offset 0 holds a keyframe unit or a stream start */
 static long g_zone_t, g_zone_max;       /* ms: keyframe asked in RING_ZONE, longest wait for it */
@@ -1193,7 +1241,11 @@ static int take_zoom_steps(long *pos) {
  * (zoom_restore=0 off). It waits until the app's map is up and spaces the
  * steps like a roller turned by hand: in the car, a burst of steps 50 ms
  * apart, 2 s after video start, left the map more zoomed in than it was
- * saved. */
+ * saved. That slow pace is kept for the replay when a session starts. After a
+ * view change the map is up, and the follower steps every zoom_step_ms
+ * (50..2000): the roller itself sends its steps 50 ms apart, and iOS has no
+ * command for an absolute zoom level (the app only gets "zoom in" and "zoom
+ * out"), so the pace is the only lever. */
 #define ZOOM_SAVE     "/mnt/ota/modkit/altscreen_zoom.txt"
 #define ZOOM_SAVE_TMP ZOOM_SAVE ".tmp"
 #define ZOOM_RESTORE_DELAY_MS 6000      /* after the first frames */
@@ -1284,8 +1336,9 @@ static void *cmd_main(void *arg) {
         tick++;
         if (!rx->streaming) continue;
         if (!ui_sent) {
-            send_cmd(rx->session, "showUI", g_conf.url[0] ? g_conf.url :
-                     g_conf.speedlimit ? CL_URL "yes" : CL_URL "no");
+            char ui[200];
+            cluster_url(ui, sizeof(ui));
+            send_cmd(rx->session, "showUI", ui);
             usleep(200 * 1000);
             send_cmd(rx->session, "forceKeyFrame", NULL);
             g_kf_sent++;
@@ -1376,7 +1429,7 @@ static void *cmd_main(void *arg) {
                     net += s;
                     zoom_net_set(net);
                 }
-                follow_at = tick + TICKS(ZOOM_RESTORE_GAP_MS);
+                follow_at = tick + TICKS(restoring ? ZOOM_RESTORE_GAP_MS : g_conf.zoom_step_ms);
                 continue;
             }
             if (following) {
@@ -1950,6 +2003,7 @@ static void *find_stream(const void *req, int64_t type) {
 
 __attribute__((constructor)) static void altscreen_init(void) {
     video_flag(0);                      /* left over if dio_manager died mid-stream */
+    session_flag(0);
     plog("=== altscreen loaded into pid %d (off with %s or %s) ===", (int)getpid(), OFF_FLAG, OFF_FLAG_TMP);
 }
 
@@ -2032,6 +2086,7 @@ int AirPlayReceiverSessionSetup(void *session, void *req, void **outResp, void *
                 pthread_mutex_unlock(&g_mtx);
                 plog("control SETUP: enabledFeatures altScreen + viewAreas");
                 slog("CarPlay session start (altScreen offered)");
+                session_flag(1);
             } else {
                 plog("control SETUP: enabledFeatures could not be set");
             }
@@ -2135,6 +2190,7 @@ int AirPlayReceiverSessionTearDown(void *session, void *req, int reason, void *a
             stop_receiver(session, full ? "full teardown" : "111 teardown");
         }
         if (full) {
+            session_flag(0);
             pthread_mutex_lock(&g_mtx);
             if (g_ctrl_session == session) g_ctrl_session = NULL;
             pthread_mutex_unlock(&g_mtx);

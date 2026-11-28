@@ -9,12 +9,16 @@
  * logged to /tmp/altscreen_java.log (capped) to find the indication that
  * carries the cockpit view, and Map_Presentation (largeMapView) is also
  * written to /tmp/altscreen_view for the dio_manager hook.
+ *
+ * lastTarget keeps the navigation's listener (its CombiBAPListener) for
+ * nav/HudTurnFeed, which reaches the head-up display handler through it.
  */
 package de.audi.tghu.navi.app.osgi.wrapper;
 
 import de.audi.atip.interapp.combi.bap.navi.CombiBAPServiceNaviListener;
 import de.audi.atip.interapp.combi.bap.navi.data.CombiBAPNaviDestination;
 import de.audi.atip.interapp.combi.bap.navi.data.MapContentSettings;
+import de.audi.app.terminalmode.smartphone.androidauto2.nav.HudTurnFeed;
 import de.audi.tghu.navi.app.util.AbstractNaviServiceWrapper;
 
 import java.io.FileOutputStream;
@@ -25,9 +29,11 @@ implements CombiBAPServiceNaviListener {
     private static final String LOG_PATH = "/tmp/altscreen_java.log";
     private static final long LOG_LIMIT = 256L * 1024L;
     private static long logged;
+    public static volatile Object lastTarget;
 
     public CombiBAPServiceNaviListenerWrapper(CombiBAPServiceNaviListener instance) {
         super(instance);
+        lastTarget = instance;
     }
 
     private CombiBAPServiceNaviListener target() {
@@ -59,6 +65,14 @@ implements CombiBAPServiceNaviListener {
             logged += text.length();
         }
         write(LOG_PATH, text, true);
+    }
+
+    /* also into the turn feed's log, which reaches the card: one line per change, see HudTurnFeed.cockpit() */
+    private static void cockpit(int kind, String what) {
+        try {
+            HudTurnFeed.cockpit(kind, what);
+        } catch (Throwable t) {
+        }
     }
 
     public void startRouteGuidanceToHomeAddress() {
@@ -93,6 +107,7 @@ implements CombiBAPServiceNaviListener {
 
     public void setActiveRGType(int rgType) {
         log("setActiveRGType(" + rgType + ")");
+        cockpit(3, "route guidance type " + rgType);
         this.target().setActiveRGType(rgType);
     }
 
@@ -108,11 +123,13 @@ implements CombiBAPServiceNaviListener {
 
     public void setMapView(int mapView, int supplementaryMapView) {
         log("setMapView(" + mapView + ", " + supplementaryMapView + ")");
+        cockpit(1, "map view " + mapView + ", supplementary map view " + supplementaryMapView);
         this.target().setMapView(mapView, supplementaryMapView);
     }
 
     public void setMapVisibility(boolean lvdsMapVisible, boolean supplementaryMapViewVisible) {
         log("setMapVisibility(" + lvdsMapVisible + ", " + supplementaryMapViewVisible + ")");
+        cockpit(0, "map visibility: map " + lvdsMapVisible + ", supplementary map view " + supplementaryMapViewVisible);
         this.target().setMapVisibility(lvdsMapVisible, supplementaryMapViewVisible);
     }
 
@@ -138,6 +155,7 @@ implements CombiBAPServiceNaviListener {
 
     public void setMapPresentation(boolean largeMapView, boolean leftSideMenuOpen, boolean rightSideMenuOpen) {
         log("setMapPresentation(" + largeMapView + ", " + leftSideMenuOpen + ", " + rightSideMenuOpen + ")");
+        cockpit(2, "map presentation: large map " + largeMapView + ", left menu " + leftSideMenuOpen + ", right menu " + rightSideMenuOpen);
         write("/tmp/altscreen_view", largeMapView ? "large\n" : "small\n", false);
         this.target().setMapPresentation(largeMapView, leftSideMenuOpen, rightSideMenuOpen);
     }

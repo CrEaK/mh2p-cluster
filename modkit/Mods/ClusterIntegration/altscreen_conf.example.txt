@@ -39,8 +39,19 @@
 # One zoom per cockpit view, large map and big gauges (1), or one for both (0).
 #zoom_per_view=1
 #
+# Milliseconds between two zoom steps when the map moves to the other view's
+# zoom after a view change (50 to 2000).
+#zoom_step_ms=600
+#
 # Ask the iPhone for its speed limit sign on the cockpit map (1/0).
 #speedlimit=1
+#
+# What the iPhone draws on the cockpit map besides the map itself: its arrival
+# line (eta) and its turn card (turncard), 1/0 each. With Audi's own turn box
+# in the cockpit (nav_box.txt) the same information is there twice; turncard=0
+# and eta=0 leave the map alone.
+#eta=1
+#turncard=1
 #
 # A full picture (keyframe) is requested this often, in milliseconds
 # (1000..60000). A damaged picture heals within that time.

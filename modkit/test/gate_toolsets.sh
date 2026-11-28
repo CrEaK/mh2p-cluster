@@ -136,6 +136,37 @@ DV=/mnt/app/eso/bin/apps/cluster/daemon_verbose
 [[ -f $DV ]] && echo "$out" | grep -q 'daemon log:        ON' && res "I daemon_log.txt installs the daemon_verbose marker" PASS || res "I daemon_log.txt marker" FAIL
 rm -f "$SCR/fakesd/Mods/ClusterIntegration/daemon_log.txt"; out=$(run)
 [[ ! -f $DV ]] && echo "$out" | grep -q 'daemon log:        OFF' && res "I daemon_verbose removed when daemon_log.txt is gone" PASS || res "I daemon_verbose removed" FAIL
+DS=/mnt/app/eso/bin/apps/cluster/daemon_size
+echo "$out" | grep -q 'cockpit size:      detected by the daemon (cockpit_size.txt' && [[ ! -f $DS ]] && res "I no cockpit_size.txt: daemon detects the size" PASS || res "I no cockpit_size.txt" FAIL
+printf '1920x722\r\n' > "$SCR/fakesd/Mods/ClusterIntegration/cockpit_size.txt"; out=$(run)
+[[ "$(cat $DS 2>/dev/null)" == 'xres=1920 yres=722' ]] && echo "$out" | grep -q 'cockpit size:      xres=1920 yres=722 (cockpit_size.txt' && res "I cockpit_size.txt installs daemon_size (CR dropped)" PASS || { res "I cockpit_size.txt installs daemon_size" FAIL; cat $DS; }
+grep -q "add $DS" "$MOD_PATH/Backup/manifest.txt" && res "I daemon_size recorded as add" PASS || res "I daemon_size recorded as add" FAIL
+out=$(run); echo "$out" | grep -q "skip identical:    $DS" && res "I unchanged cockpit size is not rewritten" PASS || res "I unchanged cockpit size" FAIL
+printf '# Q3\n  1280 X 640   # first valid line wins\n1540x720\n' > "$SCR/fakesd/Mods/ClusterIntegration/cockpit_size.txt"; out=$(run)
+[[ "$(cat $DS 2>/dev/null)" == 'xres=1280 yres=640' ]] && res "I cockpit size: comments and blanks dropped, first valid line wins" PASS || { res "I cockpit size comments" FAIL; cat $DS; }
+printf 'xres=1920 yres=722; rm -rf /\n32x722\n1920x5000\n1920\n' > "$SCR/fakesd/Mods/ClusterIntegration/cockpit_size.txt"; out=$(run)
+[[ ! -f $DS ]] && echo "$out" | grep -q 'cockpit size:      WARN cockpit_size.txt has no line like 1920x722' && echo "$out" | grep -q "cockpit size:      detected by the daemon (removed $DS)" && res "I invalid cockpit_size.txt is ignored and daemon_size removed" PASS || { res "I invalid cockpit_size.txt" FAIL; cat $DS; }
+printf '1920x722\n' > "$SCR/fakesd/Mods/ClusterIntegration/cockpit_size.txt"; run >/dev/null; rm -f "$SCR/fakesd/Mods/ClusterIntegration/cockpit_size.txt"; out=$(run)
+[[ ! -f $DS ]] && echo "$out" | grep -q "cockpit size:      detected by the daemon (removed $DS)" && res "I daemon_size removed when cockpit_size.txt is gone" PASS || res "I daemon_size removed" FAIL
+printf '1920x722\n' > "$SCR/fakesd/Mods/ClusterIntegration/cockpit_size.txt"; run >/dev/null; rm -f "$MOD_PATH/Backup/manifest.txt"; "$M" "$MOD_PATH/uninstall.sh" >/dev/null 2>&1
+[[ ! -f $DS ]] && res "I uninstall removes daemon_size without a manifest" PASS || res "I uninstall removes daemon_size" FAIL
+rm -f "$SCR/fakesd/Mods/ClusterIntegration/cockpit_size.txt"
+HF=/mnt/app/eso/bin/apps/cluster/hud_feed
+out=$(run)
+echo "$out" | grep -q 'hud arrows:        OFF (trial; create Mods/ClusterIntegration/hud_arrows.txt' && [[ ! -f $HF ]] && res "I no hud_arrows.txt: head-up trial off" PASS || res "I no hud_arrows.txt" FAIL
+: > "$SCR/fakesd/Mods/ClusterIntegration/hud_arrows.txt"; out=$(run)
+[[ "$(cat $HF 2>/dev/null)" == 1 ]] && echo "$out" | grep -q 'hud arrows:        ON, level 1' && res "I empty hud_arrows.txt installs hud_feed with level 1" PASS || { res "I hud_arrows.txt installs hud_feed" FAIL; cat $HF; }
+grep -q "add $HF" "$MOD_PATH/Backup/manifest.txt" && res "I hud_feed recorded as add" PASS || res "I hud_feed recorded as add" FAIL
+out=$(run); echo "$out" | grep -q "skip identical:    $HF" && res "I unchanged hud level is not rewritten" PASS || res "I unchanged hud level" FAIL
+printf '2\r\nside streets too\n' > "$SCR/fakesd/Mods/ClusterIntegration/hud_arrows.txt"; out=$(run)
+[[ "$(cat $HF 2>/dev/null)" == 2 ]] && echo "$out" | grep -q 'hud arrows:        ON, level 2' && res "I hud_arrows.txt starting with 2 sets level 2 (CR ignored)" PASS || { res "I hud level 2" FAIL; cat $HF; }
+printf 'yes; rm -rf /\n' > "$SCR/fakesd/Mods/ClusterIntegration/hud_arrows.txt"; out=$(run)
+[[ "$(cat $HF 2>/dev/null)" == 1 ]] && res "I any other hud_arrows.txt content means level 1" PASS || { res "I hud level from other content" FAIL; cat $HF; }
+rm -f "$SCR/fakesd/Mods/ClusterIntegration/hud_arrows.txt"; out=$(run)
+[[ ! -f $HF ]] && echo "$out" | grep -q "hud arrows:        OFF (removed $HF)" && res "I hud_feed removed when hud_arrows.txt is gone" PASS || res "I hud_feed removed" FAIL
+: > "$SCR/fakesd/Mods/ClusterIntegration/hud_arrows.txt"; run >/dev/null; rm -f "$MOD_PATH/Backup/manifest.txt"; "$M" "$MOD_PATH/uninstall.sh" >/dev/null 2>&1
+[[ ! -f $HF ]] && res "I uninstall removes hud_feed without a manifest" PASS || res "I uninstall removes hud_feed" FAIL
+rm -f "$SCR/fakesd/Mods/ClusterIntegration/hud_arrows.txt"
 rm -rf /mnt/app /fs /ifs "$SCR/jarsrc" /tmp/gal_preload.log
 echo "=== J: review fixes (stub kept without audi/, weak comparator + mtime)"
 setup MH2p_ER_AUG35_P2873 aa aa ""; run >/dev/null; [[ -f $STUB ]] || res "J precondition stub installed" FAIL
@@ -197,6 +228,93 @@ grep -q 'GAL_CLUSTER_INSET_LEFT=490' /mnt/app/eso/bin/apps/cluster/gal_env && re
 out=$(run)
 echo "$out" | grep -q 'skip identical:    /mnt/app/eso/bin/apps/cluster/gal_env' && echo "$out" | grep -q 'skip identical:    /mnt/app/eso/bin/apps/cluster/altscreen.conf' && res "P unchanged files skipped on the next run" PASS || res "P unchanged files skipped on the next run" FAIL
 rm -rf /mnt/app /fs /ifs "$SCR/jarsrc" /tmp/gal_preload.log
+echo "=== Q: navigation box (nav_box.txt): dog.so and one more dependency in the navigation's libwatchdog.so"
+NV=/mnt/app/navigation; AC=/mnt/app/eso/bin/apps/cluster; NB="$SCR/fakesd/Mods/ClusterIntegration/nav_box.txt"
+PY="$(command -v python3)"; RABS="$(cd "$REPO" && pwd)"
+navsetup() { # $1 release  $2 spare slots  $3 size of the navigation program
+  setup "$1" aa aa ""; mkdir -p $NV; "$PY" "$RABS/modkit/test/fake_watchdog.py" $NV/libwatchdog.so "$2"; chmod 755 $NV/libwatchdog.so
+  "$PY" -c 'import sys; open(sys.argv[1], "wb").truncate(int(sys.argv[2]))' $NV/navStartup "$3"; cp $NV/libwatchdog.so "$SCR/wd.orig"
+}
+standin() { printf '#!/bin/sh\nexec %s %s/src/navhook/add_needed.py "$@"\n' "$PY" "$RABS" > "$MOD_PATH/navhook/addneeded"; }
+broken() { printf '#!/bin/sh\nexit 126\n' > "$MOD_PATH/navhook/addneeded"; }
+needs() { "$PY" "$RABS/src/navhook/add_needed.py" check $NV/libwatchdog.so dog.so >/dev/null 2>&1; }
+noswitch() { [[ ! -f $AC/komo_feed && ! -f $AC/komo_show && ! -f $AC/komo_hook ]]; }
+navsetup MH2p_ER_AUG35_P2711 4 47516812; out=$(run)
+echo "$out" | grep -q 'nav box:           OFF (trial, Audi P2711 and P2873; create Mods/ClusterIntegration/nav_box.txt' && cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && [[ ! -f $NV/dog.so ]] && noswitch && res "Q no nav_box.txt: off, navigation untouched" PASS || res "Q no nav_box.txt" FAIL
+touch "$NB"; out=$(run)
+echo "$out" | grep -q 'nav box:           skipped (the helper navhook/addneeded does not run on this unit; nothing changed)' && cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && [[ ! -f $NV/dog.so && ! -f $NV/libwatchdog.so.orig ]] && noswitch && res "Q the unit's helper does not run here: skipped, nothing changed" PASS || { res "Q helper does not run" FAIL; echo "$out" | grep 'nav box'; }
+standin; out=$(run)
+echo "$out" | grep -q 'nav box:           ON (trial' && needs && cmp -s "$MOD_PATH/navhook/dog.so" $NV/dog.so && res "Q installed: dog.so in place and named by libwatchdog.so" PASS || { res "Q installed" FAIL; echo "$out" | grep -E 'nav box|ERROR'; }
+cmp -s $NV/libwatchdog.so.orig "$SCR/wd.orig" && cmp -s "$MOD_PATH/Backup/libwatchdog.so.original" "$SCR/wd.orig" && res "Q original kept next to the library and on the card" PASS || res "Q original kept" FAIL
+[[ -f $AC/komo_feed && -f $AC/komo_show && -f $AC/komo_hook ]] && res "Q the three switches are set" PASS || res "Q switches set" FAIL
+grep -q "replace $NV/libwatchdog.so backup=$MOD_PATH/Backup/libwatchdog.so.original" "$MOD_PATH/Backup/manifest.txt" && grep -q "add $NV/dog.so" "$MOD_PATH/Backup/manifest.txt" && grep -q "add $AC/komo_hook" "$MOD_PATH/Backup/manifest.txt" && res "Q recorded in the manifest" PASS || res "Q manifest" FAIL
+[[ "$(ls -l $NV/libwatchdog.so | awk '{print $5}')" == "$(ls -l "$SCR/wd.orig" | awk '{print $5}')" && -x $NV/libwatchdog.so && -x $NV/dog.so ]] && res "Q same size, both readable and executable" PASS || res "Q size and mode" FAIL
+ls /tmp/cluster_addneeded.* /tmp/cluster_watchdog.* $NV/*.new >/dev/null 2>&1 && res "Q no work files left" FAIL || res "Q no work files left" PASS
+cp $NV/libwatchdog.so "$SCR/wd.patched"; out=$(run)
+echo "$out" | grep -q 'nav box:           libwatchdog.so names dog.so already' && echo "$out" | grep -q "skip identical:    $NV/dog.so" && cmp -s $NV/libwatchdog.so "$SCR/wd.patched" && cmp -s $NV/libwatchdog.so.orig "$SCR/wd.orig" && res "Q second run changes nothing" PASS || { res "Q second run" FAIL; echo "$out" | grep -E 'nav box|dog.so'; }
+rm -f "$NB"; out=$(run)
+cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && [[ ! -f $NV/dog.so && ! -f $NV/libwatchdog.so.orig ]] && noswitch && echo "$out" | grep -q "restore original:  $NV/libwatchdog.so" && res "Q without nav_box.txt: original bytes back, dog.so and switches gone" PASS || { res "Q removed with the file" FAIL; echo "$out" | grep -E 'nav box|restore|dog.so'; }
+touch "$NB"; run >/dev/null; needs || res "Q precondition: installed again" FAIL
+rm -f "$MOD_PATH/Backup/manifest.txt"; "$M" "$MOD_PATH/uninstall.sh" >/dev/null 2>&1
+cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && [[ ! -f $NV/dog.so && ! -f $NV/libwatchdog.so.orig ]] && noswitch && res "Q uninstall: original bytes back, dog.so and switches gone (no manifest)" PASS || res "Q uninstall" FAIL
+run >/dev/null; needs || res "Q precondition: installed a third time" FAIL
+broken; out=$("$M" "$MOD_PATH/uninstall.sh" 2>&1)
+cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && [[ ! -f $NV/dog.so ]] && echo "$out" | grep -q "restore original:  $NV/libwatchdog.so.orig -> $NV/libwatchdog.so" && res "Q uninstall without a working helper: the kept original goes back" PASS || { res "Q uninstall without helper" FAIL; echo "$out" | grep -E 'nav box|restore'; }
+standin; : > "$NB"; run >/dev/null; needs || res "Q precondition: installed a fourth time" FAIL
+broken; rm -f $NV/libwatchdog.so.orig "$MOD_PATH/Backup"/libwatchdog.so.original*; out=$("$M" "$MOD_PATH/uninstall.sh" 2>&1)
+needs && cmp -s "$MOD_PATH/navhook/dog.so" $NV/dog.so && noswitch && echo "$out" | grep -q "nav box:           WARN could not take dog.so out of $NV/libwatchdog.so" && res "Q no helper and no copy: dog.so stays with the library that needs it, switches gone" PASS || { res "Q dog.so stays" FAIL; echo "$out" | grep -E 'nav box|restore'; }
+standin; out=$("$M" "$MOD_PATH/uninstall.sh" 2>&1)
+cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && [[ ! -f $NV/dog.so ]] && res "Q a later uninstall with a working helper finishes the job" PASS || res "Q later uninstall" FAIL
+navsetup MH2p_ER_AUG35_P2711 4 48000000; touch "$NB"; standin; out=$(run)
+echo "$out" | grep -q 'nav box:           skipped (the navigation program is none of the builds the hook was written for: 48000000 bytes, known are 47516812 47923536' && cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && [[ ! -f $NV/dog.so ]] && noswitch && res "Q another navigation build: skipped, nothing changed" PASS || { res "Q another build" FAIL; echo "$out" | grep 'nav box'; }
+navsetup MH2p_ER_AUG35_P2711 0 47516812; touch "$NB"; standin; out=$(run)
+echo "$out" | grep -q 'nav box:           skipped (libwatchdog.so cannot take the dependency: addneeded: no spare slot' && cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && [[ ! -f $NV/dog.so ]] && noswitch && res "Q library without a spare slot: skipped, nothing changed" PASS || { res "Q no spare slot" FAIL; echo "$out" | grep 'nav box'; }
+navsetup MH2p_ER_AUG35_P2873 4 47923536; touch "$NB"; standin; out=$(run)
+echo "$out" | grep -q 'nav box:           ON (trial' && needs && cmp -s "$MOD_PATH/navhook/dog.so" $NV/dog.so && cmp -s $NV/libwatchdog.so.orig "$SCR/wd.orig" && [[ -f $AC/komo_feed && -f $AC/komo_show && -f $AC/komo_hook ]] && res "Q P2873 with its navigation build: installed like on P2711" PASS || { res "Q P2873 installed" FAIL; echo "$out" | grep -E 'nav box|ERROR'; }
+rm -f "$NB"; out=$(run)
+cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && [[ ! -f $NV/dog.so && ! -f $NV/libwatchdog.so.orig ]] && noswitch && res "Q P2873 without nav_box.txt: original bytes back" PASS || { res "Q P2873 removed" FAIL; echo "$out" | grep -E 'nav box|ERROR'; }
+navsetup MH2p_ER_AUG35_P2873 4 48000000; touch "$NB"; standin; out=$(run)
+echo "$out" | grep -q 'nav box:           skipped (the navigation program is none of the builds' && cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && [[ ! -f $NV/dog.so ]] && noswitch && res "Q P2873 with an unknown navigation build: skipped, nothing changed" PASS || { res "Q P2873 unknown build" FAIL; echo "$out" | grep 'nav box'; }
+HA="$SCR/fakesd/Mods/ClusterIntegration/hud_arrows.txt"; HF2=/mnt/app/eso/bin/apps/cluster/hud_feed
+navsetup MH2p_ER_AUG35_P2711 4 47516812; touch "$HA"; standin; out=$(run)
+echo "$out" | grep -q 'hud scene:         ON (the navigation hook draws the arrow on the head-up display, without the box in the cockpit)' && needs && cmp -s "$MOD_PATH/navhook/dog.so" $NV/dog.so && [[ -f $AC/komo_hook && -f $HF2 && ! -f $AC/komo_feed && ! -f $AC/komo_show ]] && echo "$out" | grep -q 'nav box:           OFF (trial' && res "Q hud_arrows.txt alone: hook and its switch, no box switches" PASS || { res "Q hud_arrows alone" FAIL; echo "$out" | grep -E 'nav box|hud|ERROR'; }
+touch "$NB"; out=$(run)
+echo "$out" | grep -q 'hud scene:         ON (the navigation hook draws the arrow on the head-up display, with the box in the cockpit)' && echo "$out" | grep -q 'nav box:           ON (trial' && [[ -f $AC/komo_hook && -f $AC/komo_feed && -f $AC/komo_show ]] && needs && res "Q hud_arrows.txt and nav_box.txt: all three switches" PASS || { res "Q hud and box" FAIL; echo "$out" | grep -E 'nav box|hud|ERROR'; }
+rm -f "$NB"; out=$(run)
+[[ -f $AC/komo_hook && ! -f $AC/komo_feed && ! -f $AC/komo_show ]] && needs && echo "$out" | grep -q "nav box:           removed $AC/komo_show" && res "Q nav_box.txt taken away, hud_arrows.txt stays: box switches go, the hook stays" PASS || { res "Q box off, hud stays" FAIL; echo "$out" | grep -E 'nav box|hud|ERROR'; }
+touch "$NB"; rm -f "$HA"; out=$(run)
+[[ -f $AC/komo_hook && -f $AC/komo_feed && -f $AC/komo_show && ! -f $HF2 ]] && needs && ! echo "$out" | grep -q 'hud scene' && res "Q hud_arrows.txt taken away, nav_box.txt stays: the box as before, no hud line" PASS || { res "Q hud off, box stays" FAIL; echo "$out" | grep -E 'nav box|hud|ERROR'; }
+rm -f "$NB"; out=$(run)
+cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && [[ ! -f $NV/dog.so && ! -f $NV/libwatchdog.so.orig ]] && noswitch && res "Q neither file: original bytes back, everything gone" PASS || { res "Q neither" FAIL; echo "$out" | grep -E 'nav box|hud|ERROR'; }
+navsetup MH2p_ER_AUG35_P2718 4 47516812; touch "$HA"; standin; out=$(run)
+echo "$out" | grep -q 'hud scene:         OFF (the arrow on the head-up display needs the navigation hook, Audi software P2711 and P2873 only, this is oem=AU sw=2718' && cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && [[ ! -f $NV/dog.so && -f $HF2 ]] && noswitch && res "Q hud_arrows.txt on another Audi software: feed on, no hook, said so" PASS || { res "Q hud on P2718" FAIL; echo "$out" | grep -E 'nav box|hud|ERROR'; }
+navsetup MH2p_ER_AUG35_P2711 4 48000000; touch "$HA"; standin; out=$(run)
+echo "$out" | grep -q 'hud scene:         OFF (the navigation hook could not be installed' && [[ ! -f $NV/dog.so ]] && noswitch && res "Q hud_arrows.txt with an unknown navigation build: no hook, said so" PASS || { res "Q hud unknown build" FAIL; echo "$out" | grep -E 'nav box|hud|ERROR'; }
+rm -f "$HA"
+NT="$SCR/fakesd/Mods/ClusterIntegration/nav_box_tabs.txt"; NF="$SCR/fakesd/Mods/ClusterIntegration/nav_flag.txt"
+navsetup MH2p_ER_AUG35_P2711 4 47516812; touch "$NB"; standin; out=$(run)
+echo "$out" | grep -q 'nav box tabs:      OFF (trial; create Mods/ClusterIntegration/nav_box_tabs.txt' && echo "$out" | grep -q 'nav flag:          OFF (trial; create Mods/ClusterIntegration/nav_flag.txt' && [[ ! -f $AC/komo_tab && ! -f $AC/komo_dest ]] && res "Q box without nav_box_tabs.txt and nav_flag.txt: both off, said so" PASS || { res "Q tabs and flag off" FAIL; echo "$out" | grep -E 'nav box|nav flag'; }
+touch "$NT" "$NF"; out=$(run)
+echo "$out" | grep -q 'nav box tabs:      ON (trial' && echo "$out" | grep -q 'nav flag:          ON (trial' && [[ -f $AC/komo_tab && -f $AC/komo_dest ]] && grep -q "add $AC/komo_tab" "$MOD_PATH/Backup/manifest.txt" && grep -q "add $AC/komo_dest" "$MOD_PATH/Backup/manifest.txt" && res "Q nav_box_tabs.txt and nav_flag.txt with the box: both switches set and recorded" PASS || { res "Q tabs and flag on" FAIL; echo "$out" | grep -E 'nav box|nav flag'; }
+echo test > $AC/komo_dest; out=$(run)
+[[ "$(cat $AC/komo_dest)" == test ]] && echo "$out" | grep -q 'nav flag:          ON (trial' && res "Q a switch that is there keeps its content" PASS || res "Q switch content kept" FAIL
+rm -f "$NB"; touch "$HA"; out=$(run)
+[[ ! -f $AC/komo_tab && -f $AC/komo_dest ]] && echo "$out" | grep -q "nav box tabs:      removed $AC/komo_tab" && echo "$out" | grep -q 'nav box tabs:      ignored (nav_box_tabs.txt needs the box in the cockpit' && echo "$out" | grep -q 'nav flag:          ON (trial' && res "Q head-up display without the box: the flag stays, the tab switch goes and is called ignored" PASS || { res "Q flag with hud only" FAIL; echo "$out" | grep -E 'nav box|nav flag'; }
+rm -f "$HA"; out=$(run)
+[[ ! -f $AC/komo_tab && ! -f $AC/komo_dest ]] && echo "$out" | grep -q "nav flag:          removed $AC/komo_dest" && echo "$out" | grep -q 'nav flag:          ignored (nav_flag.txt needs the navigation hook' && res "Q neither box nor head-up display: the flag switch goes and is called ignored" PASS || { res "Q flag without hook" FAIL; echo "$out" | grep -E 'nav box|nav flag'; }
+touch "$NB"; run >/dev/null; rm -f "$NT" "$NF"; out=$(run)
+[[ ! -f $AC/komo_tab && ! -f $AC/komo_dest && -f $AC/komo_show ]] && echo "$out" | grep -q "nav box tabs:      removed $AC/komo_tab" && echo "$out" | grep -q "nav flag:          removed $AC/komo_dest" && res "Q the two files taken away: switches removed, the box stays" PASS || { res "Q tabs and flag removed" FAIL; echo "$out" | grep -E 'nav box|nav flag'; }
+touch "$NT" "$NF"; run >/dev/null; [[ -f $AC/komo_tab && -f $AC/komo_dest ]] || res "Q precondition: tab and flag switches set again" FAIL
+rm -f "$MOD_PATH/Backup/manifest.txt"; "$M" "$MOD_PATH/uninstall.sh" >/dev/null 2>&1
+[[ ! -f $AC/komo_tab && ! -f $AC/komo_dest ]] && noswitch && res "Q uninstall removes the tab and flag switches (no manifest)" PASS || res "Q uninstall tab and flag" FAIL
+navsetup MH2p_ER_AUG35_P2718 4 47516812; touch "$NB" "$NT" "$NF"; standin; out=$(run)
+echo "$out" | grep -q 'nav box tabs:      ignored' && echo "$out" | grep -q 'nav flag:          ignored' && [[ ! -f $AC/komo_tab && ! -f $AC/komo_dest ]] && res "Q another Audi software: tab and flag files ignored" PASS || { res "Q tabs and flag on P2718" FAIL; echo "$out" | grep -E 'nav box|nav flag'; }
+rm -f "$NT" "$NF"
+navsetup MH2p_ER_AUG35_P2718 4 47516812; touch "$NB"; standin; out=$(run)
+echo "$out" | grep -q 'nav box:           ignored (nav_box.txt works on Audi software P2711 and P2873 only, this is oem=AU sw=2718)' && cmp -s $NV/libwatchdog.so "$SCR/wd.orig" && [[ ! -f $NV/dog.so ]] && noswitch && res "Q another Audi software (P2718): ignored, nothing changed" PASS || { res "Q P2718 ignored" FAIL; echo "$out" | grep 'nav box'; }
+setup MH2p_ER_AUG35_P2711 aa aa "nav_box.txt"; standin; out=$(run)
+echo "$out" | grep -q "nav box:           skipped (no navigation under $NV)" && res "Q no navigation folder: skipped" PASS || { res "Q no navigation folder" FAIL; echo "$out" | grep 'nav box'; }
+rm -rf /mnt/app /fs /ifs "$SCR/jarsrc" "$SCR/wd.orig" "$SCR/wd.patched" /tmp/gal_preload.log
 echo "=== O: gal wrapper starts the cluster daemon when it is missing"
 setup MH2p_ER_AUG35_P2873 aa aa ""; run >/dev/null
 printf '#!/bin/sh\necho "daemon-stub $*"\nsleep 20\n' > "$MOD_PATH/aa_only/cluster"; run >/dev/null   # a daemon stand-in that stays alive

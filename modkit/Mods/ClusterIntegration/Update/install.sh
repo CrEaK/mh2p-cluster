@@ -42,6 +42,26 @@
 #                         Auto hook by the gal wrapper (insets, live logging)
 #     daemon_log.txt      start the cluster daemon with verbose=2
 #                         (cluster_daemon.log on USB or /tmp)
+#     cockpit_size.txt    WIDTHxHEIGHT of the cockpit display (e.g. 1920x722)
+#                         for cars where the daemon picks the wrong display
+#     carplay_turns.txt   trial, with enable_carplay_altscreen.txt: load the
+#                         turn-by-turn hook next to the map hook (wireless
+#                         CarPlay), so CarPlay turn data reaches the JAR
+#     hud_arrows.txt      trial: the phone's next turn on the head-up display
+#                         (hud-feed.log in the ModKit log folder says what the
+#                         car answered); "2" in the file adds side streets.
+#                         On Audi P2711 and P2873 it installs the navigation
+#                         hook as well (the arrow needs it), without the box
+#                         in the cockpit unless nav_box.txt is there too
+#     nav_box.txt         trial, Audi P2711 and P2873: the phone's next turn in
+#                         Audi's own cockpit box (hook in the navigation
+#                         process, see navhook/navhook.sh)
+#     nav_box_tabs.txt    trial, with nav_box.txt: no box while the cockpit
+#                         shows the phone's map (CarPlay draws its own turn
+#                         there), the box in the other tabs
+#     nav_flag.txt        trial, with nav_box.txt or hud_arrows.txt on Audi
+#                         P2711 and P2873: Audi's picture with the flag in
+#                         place of the arrow for the last 200 m
 #     uninstall.txt       ModKit convention: run uninstall.sh instead
 # - Copies JAR, cluster, gal_cluster.so, dio_cluster.so to their target dirs.
 # - On Audi also installs Update/audi/ClusterIntegration_StorageMountHandler_
@@ -822,7 +842,7 @@ if [[ $ALTSCREEN -eq 1 ]]; then
     rm -f "$ALT_CONF_STAGE"
     if [[ -f "$ALT_CONF_SRC" ]]; then
         awk '{ sub(/\r$/, ""); sub(/[ \t]*#.*$/, ""); gsub(/^[ \t]+|[ \t]+$/, "") }
-             /^(phys|large|small|sport_large|sport_small|zoom_invert|zoom_restore|zoom_per_view|zoom_max|speedlimit|keyframe_ms)=[0-9]+(,[0-9]+)*$/ { print; next }
+             /^(phys|large|small|sport_large|sport_small|zoom_invert|zoom_restore|zoom_per_view|zoom_max|zoom_step_ms|speedlimit|eta|turncard|keyframe_ms)=[0-9]+(,[0-9]+)*$/ { print; next }
              /./ { bad++ }
              END { exit (bad > 0 ? 1 : 0) }' "$ALT_CONF_SRC" > "$ALT_CONF_STAGE" 2>/dev/null
         [[ $? -ne 0 ]] && print "altscreen conf:    WARN altscreen_conf.txt has lines that are not key=numbers with a known key; they are ignored"
@@ -972,6 +992,229 @@ elif [[ -f "$DAEMON_LOG_DST" ]]; then
     rm -f "$DAEMON_LOG_DST" && print "daemon log:        OFF (removed $DAEMON_LOG_DST)" && note "remove $DAEMON_LOG_DST"
 else
     print "daemon log:        OFF (create Mods/ClusterIntegration/daemon_log.txt to turn it on)"
+fi
+
+# Cockpit size. The cluster daemon finds the size of the cockpit display by
+# itself, and on some cars it takes the MMI screen instead (Audi Q3 with the
+# Virtual Cockpit Plus: 1540x720 instead of 1920x722, so the picture ends at
+# 1540 and the rest of the cockpit stays black). Mods/ClusterIntegration/
+# cockpit_size.txt on the card holds WIDTHxHEIGHT (e.g. 1920x722); the
+# installer writes it to $CLUSTER_DIR/daemon_size as "xres=W yres=H", and the
+# Persist script and the gal wrapper start the daemon with that, which hands
+# it to every picture process ("display size: WxH (from args, auto-detect
+# skipped)" in cluster_daemon.log). Without a valid file an installed
+# daemon_size is removed and the daemon detects the size again.
+SIZE_SRC="$MOD_ROOT/cockpit_size.txt"
+SIZE_DST="$CLUSTER_DIR/daemon_size"
+SIZE_STAGE="/tmp/cluster_size.$$"
+rm -f "$SIZE_STAGE"
+if [[ -f "$SIZE_SRC" ]]; then
+    awk '{ sub(/\r$/, ""); sub(/[ \t]*#.*$/, ""); gsub(/[ \t]/, "") }
+         /^[0-9]+[xX][0-9]+$/ && !n {
+             split(tolower($0), a, "x"); w = a[1] + 0; h = a[2] + 0
+             if (w >= 64 && w <= 4096 && h >= 64 && h <= 4096) { printf "xres=%d yres=%d\n", w, h; n = 1 }
+         }
+         END { exit (n ? 0 : 1) }' "$SIZE_SRC" > "$SIZE_STAGE" 2>/dev/null
+    [[ -s "$SIZE_STAGE" ]] || print "cockpit size:      WARN cockpit_size.txt has no line like 1920x722 (64 to 4096 each), ignored"
+fi
+if [[ -s "$SIZE_STAGE" ]]; then
+    # the staged file is new every run, so compare by content, not time
+    text_same "$SIZE_STAGE" "$SIZE_DST"
+    if [[ $? -eq 0 ]]; then
+        print "skip identical:    $SIZE_DST"
+    else
+        install_file "$SIZE_STAGE" "$SIZE_DST" && chmod 644 "$SIZE_DST" 2>/dev/null
+    fi
+    awk '{ printf "cockpit size:      %s (cockpit_size.txt; the daemon skips its own detection)\n", $0 }' "$SIZE_DST"
+elif [[ -f "$SIZE_DST" ]]; then
+    rm -f "$SIZE_DST" && print "cockpit size:      detected by the daemon (removed $SIZE_DST)" && note "remove $SIZE_DST"
+else
+    print "cockpit size:      detected by the daemon (cockpit_size.txt with a line like 1920x722 sets it)"
+fi
+rm -f "$SIZE_STAGE"
+
+# Head-up display trial. Mods/ClusterIntegration/hud_arrows.txt on the card
+# installs $CLUSTER_DIR/hud_feed; the Audi JAR's nav/HudTurnFeed then hands
+# the phone's next turn (Android Auto, or CarPlay with the turn-by-turn hook)
+# to the navigation's head-up display handler as well and writes hud-feed.log
+# to the ModKit log folder. The file holds the level: 1 = arrow, distance and
+# road, 2 = side streets too (a "2" as the first character of hud_arrows.txt).
+# The JAR looks for the file when the MMI starts. Without hud_arrows.txt an
+# installed hud_feed is removed and the JAR does nothing of this.
+HUD_SRC="$MOD_ROOT/hud_arrows.txt"
+HUD_DST="$CLUSTER_DIR/hud_feed"
+HUD_STAGE="/tmp/cluster_hud.$$"
+rm -f "$HUD_STAGE"
+if [[ -f "$HUD_SRC" ]]; then
+    HUD_LEVEL=1
+    read HUD_FIRST < "$HUD_SRC"
+    case "$HUD_FIRST" in 2*) HUD_LEVEL=2 ;; esac
+    print "$HUD_LEVEL" > "$HUD_STAGE"
+    text_same "$HUD_STAGE" "$HUD_DST"
+    if [[ $? -eq 0 ]]; then
+        print "skip identical:    $HUD_DST"
+    else
+        install_file "$HUD_STAGE" "$HUD_DST" && chmod 644 "$HUD_DST" 2>/dev/null
+    fi
+    print "hud arrows:        ON, level $HUD_LEVEL (trial; hud-feed.log in the ModKit log folder, active after the next MMI start)"
+elif [[ -f "$HUD_DST" ]]; then
+    rm -f "$HUD_DST" && print "hud arrows:        OFF (removed $HUD_DST)" && note "remove $HUD_DST"
+else
+    print "hud arrows:        OFF (trial; create Mods/ClusterIntegration/hud_arrows.txt to turn it on)"
+fi
+rm -f "$HUD_STAGE"
+
+# CarPlay turn data next to the cockpit map, trial. With the map hook
+# installed the dio_manager wrapper preloads only altscreen.so, so the
+# iPhone's route guidance never reaches the JAR. Mods/ClusterIntegration/
+# carplay_turns.txt installs the marker $CLUSTER_DIR/carplay_turns, and the
+# wrapper then preloads dio_cluster.so as well (the hooks take over different
+# functions). Only with enable_carplay_altscreen.txt: without the map hook
+# the wrapper loads dio_cluster.so alone anyway.
+TURNS_SRC="$MOD_ROOT/carplay_turns.txt"
+TURNS_DST="$CLUSTER_DIR/carplay_turns"
+if [[ -f "$TURNS_SRC" && $ALTSCREEN -eq 1 ]]; then
+    if [[ ! -f "$TURNS_DST" ]]; then
+        : > "$TURNS_DST" && note "add $TURNS_DST"
+    fi
+    print "carplay turns:     ON (trial; dio_cluster.so is loaded next to altscreen.so, wireless CarPlay, active after the next MMI start)"
+else
+    [[ -f "$TURNS_DST" ]] && rm -f "$TURNS_DST" && print "carplay turns:     removed $TURNS_DST" && note "remove $TURNS_DST"
+    if [[ -f "$TURNS_SRC" ]]; then
+        print "carplay turns:     ignored (carplay_turns.txt needs enable_carplay_altscreen.txt)"
+    else
+        print "carplay turns:     OFF (trial; with the CarPlay map, create Mods/ClusterIntegration/carplay_turns.txt for turn data)"
+    fi
+fi
+
+# The phone's next turn in Audi's own cockpit box (the picture next to the
+# right dial) and on the head-up display, trial, Audi software P2711 and P2873
+# (the two builds of the navigation program the hook knows; P2873 was read from
+# a dump on 2026-11-27 and has not run on a car yet).
+# Mods/ClusterIntegration/nav_box.txt installs the navigation hook (dog.so and
+# one more dependency in the navigation's libwatchdog.so, see
+# navhook/navhook.sh) and the three switches the Audi JAR's nav/HudTurnFeed and
+# the hook read: komo_feed (the phone's turn goes to the navigation's
+# renderer), komo_show (the box is shown without an Audi route) and komo_hook
+# (the hook is armed). With CarPlay the turn data needs carplay_turns.txt as
+# well. Without nav_box.txt and hud_arrows.txt, or where the hook cannot be
+# installed, all of it is taken out again.
+NAVBOX_SRC="$MOD_ROOT/nav_box.txt"
+# The arrow on the head-up display (hud_arrows.txt above) comes from the same
+# renderer and needs the hook as well, but not the box: with hud_arrows.txt
+# alone the hook and komo_hook are installed and the two box switches are not.
+# The JAR then asks for the scene in the head-up display's view only.
+if [[ -f "$MOD_PATH/navhook/navhook.sh" ]]; then
+    . "$MOD_PATH/navhook/navhook.sh"
+    NAVBOX_ON=0
+    NAVHOOK_ON=0
+    NAVBOX_FW=0
+    [[ "$OEM" == "AU" && ( "$SOFTWARE_VERSION" == 2711 || "$SOFTWARE_VERSION" == 2873 ) ]] && NAVBOX_FW=1
+    if [[ ( -f "$NAVBOX_SRC" || -f "$HUD_SRC" ) && $NAVBOX_FW -eq 1 ]]; then
+        navhook_install && NAVHOOK_ON=1
+    fi
+    [[ $NAVHOOK_ON -eq 1 && -f "$NAVBOX_SRC" ]] && NAVBOX_ON=1
+    if [[ $NAVHOOK_ON -eq 1 ]]; then
+        if [[ ! -f "$CLUSTER_DIR/komo_hook" ]]; then
+            : > "$CLUSTER_DIR/komo_hook" && note "add $CLUSTER_DIR/komo_hook"
+        fi
+        rm -f "$NAVHOOK_FAILS" 2>/dev/null
+    else
+        [[ -f "$CLUSTER_DIR/komo_hook" ]] && rm -f "$CLUSTER_DIR/komo_hook" && print "nav box:           removed $CLUSTER_DIR/komo_hook" && note "remove $CLUSTER_DIR/komo_hook"
+        navhook_remove
+    fi
+    if [[ $NAVBOX_ON -eq 1 ]]; then
+        for NAVBOX_SW in komo_feed komo_show; do
+            if [[ ! -f "$CLUSTER_DIR/$NAVBOX_SW" ]]; then
+                : > "$CLUSTER_DIR/$NAVBOX_SW" && note "add $CLUSTER_DIR/$NAVBOX_SW"
+            fi
+        done
+        print "nav box:           ON (trial; the phone's turn in Audi's cockpit box, active after the next MMI start; komo_hook.log in the ModKit log folder)"
+    else
+        for NAVBOX_SW in komo_feed komo_show; do
+            [[ -f "$CLUSTER_DIR/$NAVBOX_SW" ]] && rm -f "$CLUSTER_DIR/$NAVBOX_SW" && print "nav box:           removed $CLUSTER_DIR/$NAVBOX_SW" && note "remove $CLUSTER_DIR/$NAVBOX_SW"
+        done
+        if [[ ! -f "$NAVBOX_SRC" ]]; then
+            print "nav box:           OFF (trial, Audi P2711 and P2873; create Mods/ClusterIntegration/nav_box.txt for the phone's turn in Audi's cockpit box)"
+        elif [[ $NAVBOX_FW -eq 0 ]]; then
+            print "nav box:           ignored (nav_box.txt works on Audi software P2711 and P2873 only, this is oem=$OEM sw=$SOFTWARE_VERSION)"
+        fi
+    fi
+    # Two more switches, which the JAR looks at while it runs. komo_tab: the box
+    # is taken away while the cockpit shows the phone's map and comes back in
+    # the other tabs (nav_box_tabs.txt, needs the box). komo_dest: the
+    # destination scene, Audi's picture with the flag, once the phone's next
+    # manoeuvre is the arrival and 200 m away or nearer (nav_flag.txt, needs
+    # the hook, so the box or the head-up display's arrow). A switch that is
+    # there is left as it is: its content may be a setting made by hand.
+    NAVTAB_SRC="$MOD_ROOT/nav_box_tabs.txt"
+    NAVFLAG_SRC="$MOD_ROOT/nav_flag.txt"
+    if [[ -f "$NAVTAB_SRC" && $NAVBOX_ON -eq 1 ]]; then
+        if [[ ! -f "$CLUSTER_DIR/komo_tab" ]]; then
+            : > "$CLUSTER_DIR/komo_tab" && note "add $CLUSTER_DIR/komo_tab"
+        fi
+        print "nav box tabs:      ON (trial; no box while the cockpit shows the phone's map, the box in the other tabs)"
+    else
+        [[ -f "$CLUSTER_DIR/komo_tab" ]] && rm -f "$CLUSTER_DIR/komo_tab" && print "nav box tabs:      removed $CLUSTER_DIR/komo_tab" && note "remove $CLUSTER_DIR/komo_tab"
+        if [[ -f "$NAVTAB_SRC" ]]; then
+            print "nav box tabs:      ignored (nav_box_tabs.txt needs the box in the cockpit, see the nav box line above)"
+        elif [[ $NAVBOX_ON -eq 1 ]]; then
+            print "nav box tabs:      OFF (trial; create Mods/ClusterIntegration/nav_box_tabs.txt and the box makes way for the phone's map)"
+        fi
+    fi
+    if [[ -f "$NAVFLAG_SRC" && $NAVHOOK_ON -eq 1 ]]; then
+        if [[ ! -f "$CLUSTER_DIR/komo_dest" ]]; then
+            : > "$CLUSTER_DIR/komo_dest" && note "add $CLUSTER_DIR/komo_dest"
+        fi
+        print "nav flag:          ON (trial; Audi's picture with the flag for the last 200 m before the destination)"
+    else
+        [[ -f "$CLUSTER_DIR/komo_dest" ]] && rm -f "$CLUSTER_DIR/komo_dest" && print "nav flag:          removed $CLUSTER_DIR/komo_dest" && note "remove $CLUSTER_DIR/komo_dest"
+        if [[ -f "$NAVFLAG_SRC" ]]; then
+            print "nav flag:          ignored (nav_flag.txt needs the navigation hook: nav_box.txt or hud_arrows.txt on Audi software P2711 or P2873)"
+        elif [[ $NAVHOOK_ON -eq 1 ]]; then
+            print "nav flag:          OFF (trial; create Mods/ClusterIntegration/nav_flag.txt for Audi's picture with the flag near the destination)"
+        fi
+    fi
+    if [[ -f "$HUD_SRC" ]]; then
+        if [[ $NAVHOOK_ON -eq 1 ]]; then
+            NAVHUD_BOX=without
+            [[ $NAVBOX_ON -eq 1 ]] && NAVHUD_BOX=with
+            print "hud scene:         ON (the navigation hook draws the arrow on the head-up display, $NAVHUD_BOX the box in the cockpit)"
+        elif [[ $NAVBOX_FW -eq 0 ]]; then
+            print "hud scene:         OFF (the arrow on the head-up display needs the navigation hook, Audi software P2711 and P2873 only, this is oem=$OEM sw=$SOFTWARE_VERSION; the display keeps the street name)"
+        else
+            print "hud scene:         OFF (the navigation hook could not be installed, see the nav box lines above; the display keeps the street name)"
+        fi
+    fi
+fi
+
+# The ModKit's start at boot. After the mods the ModKit puts its own script in
+# place of the MMI's start program (/mnt/app/eso/bin/servicemgrmibhigh, the
+# original becomes servicemgrmibhigh0); that script runs the mod's
+# Persist/install.sh at every boot. When another patch already replaced the
+# start program, the ModKit stops with "error: unknown patch state" in
+# _ModKit_Update.log and nothing starts the mod's boot part. This only looks
+# and reports; the dio_manager wrapper then starts the boot part of the CarPlay
+# map itself, and the log folder is made here so the stick collects its logs.
+SMG=/mnt/app/eso/bin/servicemgrmibhigh
+smg_is_program() {
+    [[ -f "$1" ]] || return 1
+    [[ "$(dd if="$1" bs=1 skip=1 count=3 2>/dev/null)" == "ELF" ]]
+}
+if [[ ! -f "$SMG" ]]; then
+    print "modkit boot:       skipped ($SMG not found)"
+elif smg_is_program "$SMG" || smg_is_program "${SMG}0"; then
+    print "modkit boot:       OK (the ModKit starts the mod at boot)"
+else
+    print "modkit boot:       WARN $SMG is the start script of another patch and there is no ${SMG}0; the ModKit will stop with \"unknown patch state\" and cannot start the mod at boot"
+    typeset smg_other
+    for smg_other in "$SMG"?*; do
+        smg_is_program "$smg_other" && print "modkit boot:       the original start program seems to be $smg_other (left alone)"
+    done
+    if [[ $ALTSCREEN -eq 1 ]]; then
+        mkdir -p /mnt/ota/modkit/Logs 2>/dev/null
+        print "modkit boot:       the dio_manager wrapper starts the CarPlay map's boot part itself (altscreen-selfstart.log and altscreen-pf.log in the Logs folder after the next run of the stick)"
+    fi
 fi
 
 swap_binary_for_wrapper gal

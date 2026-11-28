@@ -190,6 +190,9 @@ IDSIControllerStateListener {
             if (refs != null && refs.length > 0) {
                 CombiBAPServiceNavi bapService = (CombiBAPServiceNavi) iContext.getServiceManager().getService(refs[0]);
                 if (bapService != null) {
+                    // hud_arrows.txt trial: with the marker installed the calls also feed the
+                    // head-up display (nav/HudTurnFeed); without it wrap() returns bapService
+                    bapService = (CombiBAPServiceNavi) de.audi.app.terminalmode.smartphone.androidauto2.nav.HudTurnFeed.wrap(bapService, "AndroidAuto");
                     this.clusterIntegration.setClusterService(bapService);
                     logChannel.log(1000000, "[%1.<init>] CombiBAPServiceNavi found and set", (Object)LOGCLASS);
                 } else {
@@ -395,7 +398,10 @@ IDSIControllerStateListener {
             ServiceReference[] refs = iContext.getServiceManager().getServiceReferences(CombiBAPServiceNavi.class);
             if (refs != null && refs.length > 0) {
                 CombiBAPServiceNavi svc = (CombiBAPServiceNavi) iContext.getServiceManager().getService(refs[0]);
-                if (svc != null) cp.setClusterService(svc);
+                if (svc != null) {
+                    svc = (CombiBAPServiceNavi) de.audi.app.terminalmode.smartphone.androidauto2.nav.HudTurnFeed.wrap(svc, "CarPlay");
+                    cp.setClusterService(svc);
+                }
             }
         } catch (Exception e) {
             logChannel.log(100000, "[%1.<init>] CarPlay: CombiBAPServiceNavi lookup failed: %2", (Object)LOGCLASS, (Object)e.toString());

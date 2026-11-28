@@ -71,8 +71,36 @@ g=dict(old["config"]["gal_h264"]); g.update({"codecRes":1080,"mode":"fill","panY
 res("altscreen: gal_h264 = shipped + Audi defaults, carConfig untouched", new["config"]["gal_h264"]==g and new["carConfig"]==old["carConfig"])
 PY
 printf '#!/bin/sh\necho "PRELOAD=$LD_PRELOAD"\n' > /mnt/app/eso/bin/apps/dio_manager.real; chmod 755 /mnt/app/eso/bin/apps/dio_manager.real
+mkdir -p /mnt/ota/modkit; : > /mnt/ota/modkit/modkit_persist.sh   # a unit where the ModKit set up its start at boot
 mksh /mnt/app/eso/bin/apps/dio_manager 2>/dev/null | grep -q "PRELOAD=$AC/altscreen.so$" && res "altscreen: wrapper preloads altscreen.so" PASS || res "altscreen: wrapper preloads altscreen.so" FAIL
 out=$(mksh "$MOD_PATH/install.sh" 2>&1); echo "$out" | grep -q "skip identical:    $AC/altscreen.so" && echo "$out" | grep -q 'carplay altscreen: ON' && res "altscreen: re-run idempotent" PASS || res "altscreen: re-run idempotent" FAIL
+echo "$out" | grep -q 'modkit boot:       skipped' && res "modkit boot: skipped without a start program" PASS || res "modkit boot: skipped without a start program" FAIL
+SMGT=/mnt/app/eso/bin/servicemgrmibhigh; SELFLOG=/mnt/ota/modkit/Logs/altscreen-selfstart.log
+selfclean() { pkill -f 'altscreen_pf.sh' 2>/dev/null; pkill -f '^sleep 2$' 2>/dev/null; rm -f /tmp/altscreen_pf.pid /tmp/cluster_daemon.pid; }
+cp /bin/ls $SMGT; out=$(mksh "$MOD_PATH/install.sh" 2>&1); echo "$out" | grep -q 'modkit boot:       OK' && res "modkit boot: clean unit reported OK" PASS || res "modkit boot: clean unit" FAIL
+mv $SMGT ${SMGT}0; printf '#!/bin/sh\n/eso/bin/servicemgrmibhigh0 &\n' > $SMGT; out=$(mksh "$MOD_PATH/install.sh" 2>&1); echo "$out" | grep -q 'modkit boot:       OK' && res "modkit boot: ModKit's own patch reported OK" PASS || res "modkit boot: ModKit patch" FAIL
+mv ${SMGT}0 ${SMGT}99; printf '#!/bin/sh\n# [q3team]\n/eso/bin/servicemgrmibhigh99 &\n' > $SMGT; h1=$(cat $SMGT ${SMGT}99 | cksum); rm -rf /mnt/ota/modkit/Logs
+out=$(mksh "$MOD_PATH/install.sh" 2>&1); h2=$(cat $SMGT ${SMGT}99 | cksum)
+echo "$out" | grep -q 'modkit boot:       WARN .*unknown patch state' && echo "$out" | grep -q "seems to be ${SMGT}99 (left alone)" && echo "$out" | grep -q 'the dio_manager wrapper starts' && [[ -d /mnt/ota/modkit/Logs && "$h1" == "$h2" && ! -e ${SMGT}0 ]] && res "modkit boot: foreign start script reported, files left alone, log folder made" PASS || { res "modkit boot: foreign start script" FAIL; echo "$out" | grep 'modkit boot'; }
+rm -f $SMGT ${SMGT}99
+selfclean; rm -f $SELFLOG /tmp/dio_preload.log; mksh /mnt/app/eso/bin/apps/dio_manager 2>/dev/null | grep -q "PRELOAD=$AC/altscreen.so" && [[ ! -f /tmp/altscreen_pf.pid && ! -f $SELFLOG ]] && ! grep -q selfstart /tmp/dio_preload.log && res "selfstart: nothing with the ModKit's boot script in place" PASS || res "selfstart: nothing with the ModKit's boot script" FAIL
+rm -f /mnt/ota/modkit/modkit_persist.sh; mksh /mnt/app/eso/bin/apps/dio_manager 2>/dev/null | grep -q "PRELOAD=$AC/altscreen.so" && w=ok || w=bad; sleep 1
+read pfp < /tmp/altscreen_pf.pid 2>/dev/null
+[[ $w == ok && -n "$pfp" && -d /proc/$pfp ]] && ! tr '\0' '\n' < /proc/$pfp/environ | grep -q LD_PRELOAD && grep -q 'port watcher: started' $SELFLOG && grep -q 'no ModKit boot script' $SELFLOG && grep -q 'start by the dio_manager wrapper' /mnt/ota/modkit/Logs/altscreen-pf.log && res "selfstart: wrapper starts the port watcher without the ModKit's boot script" PASS || { res "selfstart: wrapper starts the port watcher" FAIL; cat $SELFLOG /tmp/dio_preload.log 2>&1 | tail -8; }
+grep -q 'selfstart: cluster daemon: started' /tmp/dio_preload.log && [[ -s /tmp/cluster_daemon.pid ]] && res "selfstart: wrapper starts the daemon and records its pid" PASS || res "selfstart: wrapper starts the daemon" FAIL
+mksh /mnt/app/eso/bin/apps/dio_manager >/dev/null 2>&1; sleep 1; read pfq < /tmp/altscreen_pf.pid
+[[ "$pfp" == "$pfq" && $(grep -c 'port watcher: started' $SELFLOG) -eq 1 ]] && grep -q "port watcher: already running (pid $pfp)" $SELFLOG && res "selfstart: a second wrapper start leaves the running watcher" PASS || { res "selfstart: second wrapper start" FAIL; cat $SELFLOG; }
+mksh $AC/altscreen_pf.sh 2>&1 | grep -q "already running (pid $pfp)" && read pfq < /tmp/altscreen_pf.pid && [[ "$pfp" == "$pfq" ]] && res "selfstart: the boot script's own start leaves the running watcher" PASS || res "selfstart: Persist start next to a running watcher" FAIL
+selfclean; echo 999999 > /tmp/altscreen_pf.pid; mksh /mnt/app/eso/bin/apps/dio_manager >/dev/null 2>&1; sleep 1; read pfq < /tmp/altscreen_pf.pid
+[[ "$pfq" != 999999 && -d /proc/$pfq ]] && res "selfstart: a stale pid file does not block the start" PASS || res "selfstart: stale pid file" FAIL
+selfclean; : > /mnt/ota/modkit/modkit_persist.sh; rm -f $SELFLOG
+echo "$out" | grep -q 'carplay turns:     OFF (trial' && [[ ! -f $AC/carplay_turns ]] && res "carplay turns: off without carplay_turns.txt" PASS || res "carplay turns: off without carplay_turns.txt" FAIL
+touch "$SCR/fakesd/Mods/ClusterIntegration/carplay_turns.txt"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
+[[ -f $AC/carplay_turns ]] && echo "$out" | grep -q 'carplay turns:     ON' && grep -q "add $AC/carplay_turns" "$MOD_PATH/Backup/manifest.txt" && res "carplay turns: marker installed and recorded" PASS || res "carplay turns: marker installed" FAIL
+mksh /mnt/app/eso/bin/apps/dio_manager 2>/dev/null | grep -q "PRELOAD=$AC/altscreen.so:$AC/dio_cluster.so$" && grep -q "dio_cluster.so as well" /tmp/dio_preload.log && res "carplay turns: wrapper preloads both hooks, map hook first" PASS || res "carplay turns: wrapper preloads both hooks" FAIL
+mv $AC/dio_cluster.so $AC/dio_cluster.so.away; mksh /mnt/app/eso/bin/apps/dio_manager 2>/dev/null | grep -q "PRELOAD=$AC/altscreen.so$" && res "carplay turns: map hook alone when dio_cluster.so is missing" PASS || res "carplay turns: missing dio_cluster.so" FAIL; mv $AC/dio_cluster.so.away $AC/dio_cluster.so
+rm -f "$SCR/fakesd/Mods/ClusterIntegration/carplay_turns.txt"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
+[[ ! -f $AC/carplay_turns ]] && echo "$out" | grep -q "carplay turns:     removed $AC/carplay_turns" && mksh /mnt/app/eso/bin/apps/dio_manager 2>/dev/null | grep -q "PRELOAD=$AC/altscreen.so$" && res "carplay turns: marker removed with the file, wrapper back to the map hook" PASS || res "carplay turns: marker removed" FAIL
 echo "=== altscreen_conf.txt: tuning file from the card ==="
 ACF=$AC/altscreen.conf; ACS="$SCR/fakesd/Mods/ClusterIntegration/altscreen_conf.txt"
 printf '# Performance view\r\nlarge=500,155,940,370  # less high\r\nphys=384,144\r\nurl=maps:/car\r\nsmall=1,2,x,4\r\nPATH=/evil\r\nsport_small=54,155,480,370\r\nzoom_max=12\r\nzoom_per_view=0\r\n' > "$ACS"
@@ -87,6 +115,9 @@ rm -f "$ACS"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
 printf '# back to the defaults\n' > "$ACS"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
 [[ ! -f $ACF ]] && echo "$out" | grep -q 'has no setting, removed' && ls "$MOD_PATH/Backup" | grep -q '^altscreen.conf.backup' && res "altscreen conf: file without a setting removes altscreen.conf" PASS || res "altscreen conf: file without a setting removes altscreen.conf" FAIL
 out=$(mksh "$MOD_PATH/install.sh" 2>&1); echo "$out" | grep -q 'has no setting, the hook uses its defaults' && [[ ! -f $ACF ]] && res "altscreen conf: nothing to remove, defaults reported" PASS || res "altscreen conf: nothing to remove" FAIL
+printf 'eta=0\nturncard=0  # the box in the cockpit shows it\nspeedlimit=1\neta=yes\n' > "$ACS"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
+[[ "$(cat $ACF)" == $'eta=0\nturncard=0\nspeedlimit=1' ]] && echo "$out" | grep -q 'altscreen conf:    WARN' && res "altscreen conf: eta and turncard are known keys, a word as value is not" PASS || { res "altscreen conf: eta and turncard" FAIL; cat $ACF; }
+printf '# back to the defaults\n' > "$ACS"; mksh "$MOD_PATH/install.sh" >/dev/null 2>&1; [[ ! -f $ACF ]] || res "altscreen conf: clean-up after the eta test" FAIL
 rm -f "$ACS"
 touch "$SCR/fakesd/Mods/ClusterIntegration/enable_carplay.txt"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
 echo "$out" | grep -q 'enable_carplay_altscreen.txt needs the Audi JAR' && [[ ! -f $AC/altscreen.so ]] && res "altscreen: ignored and removed with enable_carplay.txt" PASS || res "altscreen: ignored with enable_carplay.txt" FAIL
@@ -94,6 +125,12 @@ rm -f "$SCR/fakesd/Mods/ClusterIntegration/enable_carplay.txt"; mksh "$MOD_PATH/
 rm -f "$SCR/fakesd/Mods/ClusterIntegration/enable_carplay_altscreen.txt"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
 python3 -c "import json;c=json.load(open('$CFG'))['config'];print(('PASS' if c['mirror']['mode']=='fill' else 'FAIL')+' altscreen off: shipped mirror.mode back')"
 [[ ! -f $AC/altscreen.so && ! -f $AC/altscreen_pf.sh && ! -f /mnt/app/eso/bin/apps/dio_manager.real ]] && echo "$out" | grep -q 'remove altscreen:' && res "altscreen off: files removed, stock dio_manager back" PASS || res "altscreen off: files removed" FAIL
+touch "$SCR/fakesd/Mods/ClusterIntegration/carplay_turns.txt"; out=$(mksh "$MOD_PATH/install.sh" 2>&1)
+echo "$out" | grep -q 'carplay turns:     ignored (carplay_turns.txt needs enable_carplay_altscreen.txt)' && [[ ! -f $AC/carplay_turns ]] && res "carplay turns: ignored without the map hook" PASS || res "carplay turns: ignored without the map hook" FAIL
+touch "$SCR/fakesd/Mods/ClusterIntegration/enable_carplay_altscreen.txt"; mksh "$MOD_PATH/install.sh" >/dev/null 2>&1; rm -f "$MOD_PATH/Backup/manifest.txt"; mksh "$MOD_PATH/uninstall.sh" >/dev/null 2>&1
+[[ ! -f $AC/carplay_turns ]] && res "carplay turns: uninstall removes the marker without a manifest" PASS || res "carplay turns: uninstall removes the marker" FAIL
+rm -f "$SCR/fakesd/Mods/ClusterIntegration/carplay_turns.txt" "$SCR/fakesd/Mods/ClusterIntegration/enable_carplay_altscreen.txt"; setup MH2p_ER_AUG35_P2711 1 1
 touch "$SCR/fakesd/Mods/ClusterIntegration/enable_carplay_altscreen.txt"; mksh "$MOD_PATH/install.sh" >/dev/null 2>&1; echo "phys=384,144" > $AC/altscreen.conf
 out=$(mksh "$MOD_PATH/uninstall.sh" 2>&1); [[ ! -d $AC && "$(head -1 /mnt/app/eso/bin/apps/dio_manager)" != "#!/bin/ksh" ]] && ls "$MOD_PATH/Backup" | grep -q '^altscreen.conf.removed' && res "altscreen: uninstall removes everything, keeps altscreen.conf in Backup" PASS || res "altscreen: uninstall" FAIL
+rm -rf /mnt/ota
 rm -rf /mnt/app /fs /tmp/gal_preload.log /tmp/dio_preload.log

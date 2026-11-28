@@ -19,6 +19,7 @@
  */
 package de.audi.tghu.navi.app.map.osgi.wrapper;
 
+import de.audi.app.terminalmode.smartphone.androidauto2.nav.HudTurnFeed;
 import de.audi.tghu.navi.app.cluster.IMapClusterService;
 import de.audi.tghu.navi.app.map.enums.ESetupOption;
 import de.audi.tghu.navi.app.map.mapcontent.MapContentList;
@@ -76,11 +77,29 @@ implements IMapClusterService {
         this.target().setKombiMapSetupOption(option, optionValue);
     }
 
+    /* also into the turn feed's log, which reaches the card: one line per change, see HudTurnFeed.cockpit() */
+    private static void cockpit(int kind, String what) {
+        try {
+            HudTurnFeed.cockpit(kind, what);
+        } catch (Throwable t) {
+        }
+    }
+
     public void switchKombiMapToAShownContext() {
+        log("switchKombiMapToAShownContext");
+        try {
+            HudTurnFeed.mapContext(true);
+        } catch (Throwable t) {
+        }
         this.target().switchKombiMapToAShownContext();
     }
 
     public void switchKombiMapToHiddenContext() {
+        log("switchKombiMapToHiddenContext");
+        try {
+            HudTurnFeed.mapContext(false);
+        } catch (Throwable t) {
+        }
         this.target().switchKombiMapToHiddenContext();
     }
 
@@ -117,6 +136,7 @@ implements IMapClusterService {
 
     public void notifyViewSizeChanged(boolean isBigStage) {
         log("notifyViewSizeChanged " + isBigStage);
+        cockpit(5, "view size changed: big stage " + isBigStage);
         write(VIEW_PATH, isBigStage ? "large\n" : "small\n", false);
         this.target().notifyViewSizeChanged(isBigStage);
     }

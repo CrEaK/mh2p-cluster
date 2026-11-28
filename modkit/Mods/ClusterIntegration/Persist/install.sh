@@ -27,10 +27,15 @@ if [[ -x "/eso/bin/apps/cluster/cluster" ]]; then
                 # installer sets from Mods/ClusterIntegration/daemon_log.txt
                 V=""
                 [[ -f /eso/bin/apps/cluster/daemon_verbose ]] && V="verbose=2"
-                /eso/bin/apps/cluster/cluster daemon $V >/dev/null 2>&1 &
+                # cockpit size the installer wrote from cockpit_size.txt
+                # ("xres=W yres=H"); anything else in the file is ignored
+                S=""
+                [[ -f /eso/bin/apps/cluster/daemon_size ]] && read S < /eso/bin/apps/cluster/daemon_size
+                case "$S" in xres=+([0-9])\ yres=+([0-9])) ;; *) S="" ;; esac
+                /eso/bin/apps/cluster/cluster daemon $V $S >/dev/null 2>&1 &
                 p=$!
                 print $p > "$DAEMON_PID" 2>/dev/null
-                print "persist: started daemon pid $p (pid file written: $?)" >> "$DAEMON_LOG" 2>/dev/null
+                print "persist: started daemon pid $p (pid file written: $?) args '$V $S'" >> "$DAEMON_LOG" 2>/dev/null
         fi
 fi
 
@@ -40,5 +45,41 @@ fi
 if [[ -x "/eso/bin/apps/cluster/altscreen_pf.sh" ]]; then
         /eso/bin/apps/cluster/altscreen_pf.sh >/dev/null 2>&1 &
         print "persist: started altscreen_pf.sh pid $!" >> "$DAEMON_LOG" 2>/dev/null
+fi
+
+# Daemon log keeper (daemon_log.txt). Without a writable stick the daemon
+# writes cluster_daemon.log to /tmp, which is gone after the next boot, and
+# some cars start the ModKit update as soon as the install stick goes in, so
+# the stick cannot stay plugged in for the log. Keep the start of the log next
+# to the other ModKit logs: the next ModKit run copies that folder to Logs/ on
+# the card. Shell built-ins do the reading; nothing is written before the log
+# holds a "display size" line (a map has run in this boot) or is KEEP_MAX lines
+# long, so a boot without a map keeps the copy of the last one. The loop ends
+# at KEEP_MAX lines.
+KEEP_SRC=/tmp/cluster_daemon.log
+KEEP_TMP=/tmp/cluster_daemon.keep
+KEEP_DST=/mnt/ota/modkit/Logs/cluster_daemon.log
+KEEP_MAX=1500
+if [[ -f /eso/bin/apps/cluster/daemon_verbose ]]; then
+        (
+                last=0
+                while :; do
+                        sleep 20
+                        [[ -s "$KEEP_SRC" ]] || continue
+                        n=0
+                        seen=0
+                        while IFS= read -r line; do
+                                print -r -- "$line"
+                                case "$line" in *"display size:"*) seen=1 ;; esac
+                                n=$((n + 1))
+                                [[ $n -ge $KEEP_MAX ]] && break
+                        done < "$KEEP_SRC" > "$KEEP_TMP"
+                        [[ $n -ge $KEEP_MAX ]] && seen=1
+                        [[ $seen -eq 1 && $n -ne $last ]] || continue
+                        cp -f "$KEEP_TMP" "$KEEP_DST" && last=$n
+                        [[ $n -ge $KEEP_MAX ]] && break
+                done
+        ) >/dev/null 2>&1 &
+        print "persist: started daemon log keeper pid $!" >> "$DAEMON_LOG" 2>/dev/null
 fi
 

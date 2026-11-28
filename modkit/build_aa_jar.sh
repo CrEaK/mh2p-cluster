@@ -33,6 +33,7 @@ SOURCES=(
     "$REPO/lsd/$PKG/nav/CarPlayScreenBridge.java"
     "$REPO/lsd/$PKG/nav/CarPlayMapSetting.java"
     "$REPO/lsd/$PKG/nav/CarPlayMapSwitch.java"
+    "$REPO/lsd/$PKG/nav/HudTurnFeed.java"
     "$REPO/lsd/de/audi/tghu/combinavi/hmi/Activator.java"
     "$REPO/lsd/de/audi/tghu/combinavi/hmi/CarPlayMapMenu.java"
     "$REPO/lsd/de/eso/hmiservice/display/DisplayManagerMIB2High.java"

@@ -1,2 +1,6 @@
 __pycache__/
 *.pyc
+# build outputs of src/navhook/build.sh (the installed copies are under modkit/)
+src/navhook/komo_hook.so
+src/navhook/addneeded
+.DS_Store
